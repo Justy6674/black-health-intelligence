@@ -34,6 +34,9 @@ export default function Hero() {
                         >
                             INTELLIGENCE
                         </span>
+                        <span className="block text-sm md:text-base tracking-[0.8em] text-white/70 uppercase mt-2">
+                            Pty Ltd
+                        </span>
                     </motion.h1>
 
                     {/* Tagline */}
@@ -43,7 +46,7 @@ export default function Hero() {
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.8, delay: 0.4 }}
                     >
-                        Building the Future of Healthcare Technology
+                        Building the Future of Healthcare Innovation
                     </motion.p>
 
                     {/* CTA Button - Precision Metal Look */}
