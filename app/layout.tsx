@@ -7,10 +7,55 @@ const inter = Inter({
     variable: '--font-inter',
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://blackhealthintelligence.com';
+const baseTitle = "Black Health Intelligence";
+const baseDescription = "Medicare-compliant telehealth intelligence, clinical portfolio insights, and disaster-ready data for Australian healthcare teams.";
+
 export const metadata: Metadata = {
-    title: "Black Health Intelligence | Healthcare Innovation Portfolio",
-    description: "Building the future of healthcare technology. Explore our portfolio of clinical practices and health SaaS solutions.",
-    keywords: ["healthcare", "health technology", "medical innovation", "telehealth", "weight loss clinic"],
+    metadataBase: siteUrl ? new URL(siteUrl) : undefined,
+    title: {
+        default: `${baseTitle} | Healthcare Innovation Portfolio`,
+        template: `%s | ${baseTitle}`,
+    },
+    description: baseDescription,
+    keywords: [
+        "healthcare",
+        "health technology",
+        "medical innovation",
+        "telehealth",
+        "Medicare telehealth",
+        "disaster support",
+        "weight loss clinic",
+    ],
+    openGraph: {
+        title: `${baseTitle} | Healthcare Innovation Portfolio`,
+        description: baseDescription,
+        url: siteUrl,
+        siteName: baseTitle,
+        type: "website",
+        images: [
+            {
+                url: "/opengraph-image",
+                width: 1200,
+                height: 630,
+                alt: "Black Health Intelligence brand preview with Medicare telehealth context",
+            },
+        ],
+    },
+    twitter: {
+        card: "summary_large_image",
+        title: `${baseTitle} | Healthcare Innovation Portfolio`,
+        description: baseDescription,
+        images: ["/twitter-image"],
+    },
+    icons: {
+        icon: "/icon.svg",
+        shortcut: "/icon.svg",
+        apple: "/icon.svg",
+    },
+    alternates: {
+        canonical: "/",
+    },
 };
 
 export default function RootLayout({

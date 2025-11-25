@@ -1,0 +1,28 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="iconGlow" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#6d90ff"/>
+      <stop offset="60%" stop-color="#3f4fa4" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#050505" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="iconBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <mask id="iconGlitch">
+      <rect width="512" height="512" fill="white"/>
+      <rect x="96" y="156" width="320" height="14" fill="black"/>
+      <rect x="96" y="238" width="320" height="10" fill="black"/>
+      <rect x="96" y="304" width="320" height="14" fill="black"/>
+      <rect x="96" y="360" width="320" height="12" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="512" height="512" fill="#050505"/>
+  <circle cx="256" cy="256" r="230" fill="url(#iconGlow)" filter="url(#iconBlur)" opacity="0.95"/>
+
+  <g mask="url(#iconGlitch)">
+    <text x="155" y="350" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="270" font-weight="900" fill="#040404" letter-spacing="-25">B</text>
+    <text x="165" y="350" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="270" font-weight="900" fill="#0f1116" letter-spacing="-25" opacity="0.25">B</text>
+  </g>
+</svg>
+

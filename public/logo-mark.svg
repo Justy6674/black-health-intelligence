@@ -1,0 +1,33 @@
+<svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#6d90ff" stop-opacity="1"/>
+      <stop offset="45%" stop-color="#3c57aa" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#050505" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+    <mask id="glitch-mask">
+      <rect width="500" height="500" fill="white"/>
+      <rect x="70" y="120" width="360" height="16" fill="black"/>
+      <rect x="70" y="210" width="360" height="10" fill="black"/>
+      <rect x="70" y="260" width="360" height="12" fill="black"/>
+      <rect x="70" y="330" width="360" height="18" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="500" height="500" fill="#050505"/>
+  <circle cx="250" cy="250" r="230" fill="url(#glow)" filter="url(#soft-glow)" opacity="0.9"/>
+
+  <g filter="url(#soft-glow)" opacity="0.4">
+    <text x="126" y="340" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="250" font-weight="900" fill="#111111" letter-spacing="-20">B</text>
+  </g>
+
+  <g mask="url(#glitch-mask)">
+    <text x="126" y="340" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="250" font-weight="900" fill="#050505" letter-spacing="-20">B</text>
+    <text x="133" y="340" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="250" font-weight="900" fill="#0a0a0a" letter-spacing="-20" opacity="0.35">B</text>
+    <text x="118" y="340" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="250" font-weight="900" fill="#0f1119" letter-spacing="-20" opacity="0.25">B</text>
+  </g>
+</svg>
+
