@@ -5,36 +5,33 @@ import { motion } from 'framer-motion'
 export default function Hero() {
     return (
         <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-deep-black">
-            {/* Animated background grid - more visible */}
+            {/* MUCH MORE VISIBLE Animated background grid */}
             <div className="absolute inset-0">
-                <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff15_1px,transparent_1px),linear-gradient(to_bottom,#ffffff15_1px,transparent_1px)] bg-[size:80px_80px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,#000_70%,transparent_100%)]"></div>
+                <div
+                    className="absolute inset-0 opacity-40"
+                    style={{
+                        backgroundImage: `
+                            linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px),
+                            linear-gradient(to bottom, rgba(255,255,255,0.08) 1px, transparent 1px)
+                        `,
+                        backgroundSize: '60px 60px',
+                    }}
+                ></div>
+                {/* Radial fade */}
+                <div className="absolute inset-0 bg-gradient-radial from-transparent via-deep-black/30 to-deep-black"></div>
             </div>
 
-            {/* Floating metallic orbs with stronger glow */}
+
+            {/* MUCH LARGER Floating metallic orbs with STRONG glow */}
             <motion.div
-                className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full opacity-20 blur-3xl"
+                className="absolute top-1/4 left-1/4 w-[600px] h-[600px] rounded-full blur-3xl"
                 style={{
-                    background: 'radial-gradient(circle, rgba(192,192,192,0.4) 0%, rgba(192,192,192,0.1) 50%, transparent 100%)'
+                    background: 'radial-gradient(circle, rgba(200,200,200,0.25) 0%, rgba(150,150,150,0.15) 40%, transparent 70%)',
+                    filter: 'blur(60px)',
                 }}
                 animate={{
-                    y: [0, 40, 0],
-                    x: [0, 30, 0],
-                    scale: [1, 1.2, 1],
-                }}
-                transition={{
-                    duration: 8,
-                    repeat: Infinity,
-                    ease: "easeInOut"
-                }}
-            />
-            <motion.div
-                className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full opacity-15 blur-3xl"
-                style={{
-                    background: 'radial-gradient(circle, rgba(51,65,85,0.6) 0%, rgba(51,65,85,0.2) 50%, transparent 100%)'
-                }}
-                animate={{
-                    y: [0, -50, 0],
-                    x: [0, -40, 0],
+                    y: [0, 60, 0],
+                    x: [0, 40, 0],
                     scale: [1, 1.3, 1],
                 }}
                 transition={{
@@ -43,29 +40,46 @@ export default function Hero() {
                     ease: "easeInOut"
                 }}
             />
+            <motion.div
+                className="absolute bottom-1/4 right-1/4 w-[700px] h-[700px] rounded-full blur-3xl"
+                style={{
+                    background: 'radial-gradient(circle, rgba(100,120,150,0.3) 0%, rgba(51,65,85,0.2) 40%, transparent 70%)',
+                    filter: 'blur(70px)',
+                }}
+                animate={{
+                    y: [0, -70, 0],
+                    x: [0, -50, 0],
+                    scale: [1, 1.4, 1],
+                }}
+                transition={{
+                    duration: 12,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                }}
+            />
 
-            {/* Additional floating particles */}
-            {[...Array(6)].map((_, i) => (
+            {/* LARGER floating particles */}
+            {[...Array(8)].map((_, i) => (
                 <motion.div
                     key={i}
-                    className="absolute w-2 h-2 bg-metallic rounded-full opacity-30"
+                    className="absolute w-3 h-3 bg-white/40 rounded-full"
                     style={{
-                        left: `${20 + i * 15}%`,
-                        top: `${30 + (i % 3) * 20}%`,
+                        left: `${15 + i * 12}%`,
+                        top: `${25 + (i % 4) * 18}%`,
+                        boxShadow: '0 0 10px rgba(255,255,255,0.5)',
                     }}
                     animate={{
-                        y: [0, -30, 0],
-                        opacity: [0.3, 0.6, 0.3],
+                        y: [0, -40, 0],
+                        opacity: [0.4, 0.8, 0.4],
                     }}
                     transition={{
-                        duration: 3 + i * 0.5,
+                        duration: 3 + i * 0.4,
                         repeat: Infinity,
                         ease: "easeInOut",
-                        delay: i * 0.2,
+                        delay: i * 0.3,
                     }}
                 />
             ))}
-
             {/* Content */}
             <div className="relative z-10 section-container text-center">
                 <motion.div
@@ -73,11 +87,15 @@ export default function Hero() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8 }}
                 >
-                    {/* Logo/Wordmark with enhanced gradient */}
+                    {/* Logo/Wordmark with STRONG gradient and glow */}
                     <motion.h1
-                        className="heading-xl mb-6 bg-gradient-to-br from-white via-silver-200 to-silver-400 bg-clip-text text-transparent font-bold"
+                        className="heading-xl mb-6 font-bold"
                         style={{
-                            textShadow: '0 0 40px rgba(255,255,255,0.1)',
+                            background: 'linear-gradient(135deg, #ffffff 0%, #e0e0e0 50%, #a0a0a0 100%)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            backgroundClip: 'text',
+                            filter: 'drop-shadow(0 0 30px rgba(255,255,255,0.3))',
                         }}
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -86,11 +104,11 @@ export default function Hero() {
                         Black Health Intelligence
                     </motion.h1>
 
-                    {/* Tagline with glow */}
+                    {/* Tagline with strong glow */}
                     <motion.p
-                        className="text-2xl md:text-3xl text-silver-300 mb-8 font-light"
+                        className="text-2xl md:text-3xl text-silver-200 mb-8 font-light"
                         style={{
-                            textShadow: '0 0 20px rgba(192,192,192,0.2)',
+                            filter: 'drop-shadow(0 0 15px rgba(200,200,200,0.4))',
                         }}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
