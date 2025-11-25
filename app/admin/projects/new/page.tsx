@@ -24,7 +24,7 @@ function NewProjectContent() {
 
 export default function NewProjectPage() {
     return (
-        <Suspense fallback={<div className="text-white">Loading form...</div>}>
+        <Suspense fallback={<div className="text-white">Loading...</div>}>
             <NewProjectContent />
         </Suspense>
     )
