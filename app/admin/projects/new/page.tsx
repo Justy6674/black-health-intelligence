@@ -1,7 +1,10 @@
+'use client'
+
+import { Suspense } from 'react'
 import ProjectForm from '@/components/admin/ProjectForm'
 import Link from 'next/link'
 
-export default function NewProjectPage() {
+function NewProjectContent() {
     return (
         <div>
             <div className="mb-8">
@@ -16,5 +19,13 @@ export default function NewProjectPage() {
                 <ProjectForm mode="create" />
             </div>
         </div>
+    )
+}
+
+export default function NewProjectPage() {
+    return (
+        <Suspense fallback={<div className="text-white">Loading form...</div>}>
+            <NewProjectContent />
+        </Suspense>
     )
 }

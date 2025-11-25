@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -7,6 +8,7 @@ import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
 import { ProjectCategory, ProjectStatus, ProjectSubcategory, MarketScope, DevelopmentPhase } from '@/lib/types'
 
+// Define component props and inner form component separately to wrap in Suspense
 interface ProjectFormProps {
     mode: 'create' | 'edit'
     initialData?: Partial<{
@@ -34,10 +36,11 @@ interface ProjectFormProps {
     }>
 }
 
-export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
+function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
     const router = useRouter()
     const supabase = createClient()
 
+    // ... existing form logic ...
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         category: initialData?.category || 'health-saas' as ProjectCategory,
@@ -544,5 +547,13 @@ export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
                 </button>
             </div>
         </form>
+    )
+}
+
+export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
+    return (
+        <Suspense fallback={<div className="text-white">Loading form...</div>}>
+            <ProjectFormContent mode={mode} initialData={initialData} />
+        </Suspense>
     )
 }
