@@ -3,7 +3,7 @@
 import { Suspense } from 'react'
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '@supabase/ssr'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
 import { ProjectCategory, ProjectStatus, ProjectSubcategory, MarketScope, DevelopmentPhase } from '@/lib/types'
@@ -38,7 +38,14 @@ interface ProjectFormProps {
 
 function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
     const router = useRouter()
-    const supabase = createClient()
+    // Initialize Supabase client directly in component
+    const [supabase] = useState(() => {
+        if (typeof window === 'undefined') return null
+        return createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
+    })
 
     // ... existing form logic ...
     const [formData, setFormData] = useState({
@@ -87,6 +94,8 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!supabase) return
+
         setError('')
         setLoading(true)
 
