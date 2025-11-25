@@ -88,7 +88,14 @@ body {
   }
   
   .card {
-    @apply bg-charcoal rounded-xl p-6 metallic-border shadow-metallic;
+    @apply relative bg-[#0f1115]/80 rounded-2xl p-8 border border-white/10 
+           shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md
+           transition-all duration-500 ease-out
+           hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(14,165,233,0.15)]
+           hover:border-sky-500/40 hover:bg-[#13161c]
+           before:absolute before:inset-0 before:rounded-2xl before:p-[1px] 
+           before:bg-gradient-to-b before:from-white/10 before:to-transparent 
+           before:-z-10 before:opacity-50 hover:before:opacity-100;
   }
   
   .heading-xl {
