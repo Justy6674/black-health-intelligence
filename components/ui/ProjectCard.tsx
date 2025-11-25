@@ -7,6 +7,7 @@ import { Project } from '@/lib/types'
 interface ProjectCardProps {
     project: Project
     index: number
+    variant?: 'standard' | 'industrial' | 'artistic'
 }
 
 const statusColors = {
@@ -23,25 +24,50 @@ const statusLabels = {
     archived: 'Archived',
 }
 
-export default function ProjectCard({ project, index }: ProjectCardProps) {
+export default function ProjectCard({ project, index, variant = 'standard' }: ProjectCardProps) {
+    // Styles based on variant
+    const containerStyles = {
+        standard: "rounded-none border border-white/10 bg-white/5 backdrop-blur-md hover:border-[var(--electric-blue)]/40 hover:shadow-[0_0_40px_rgba(14,165,233,0.15)]",
+        industrial: "rounded-none border border-blue-500/20 bg-black/40 backdrop-blur-sm hover:border-blue-400/60 hover:shadow-[0_0_30px_rgba(56,189,248,0.1)] hover:bg-blue-900/10",
+        artistic: "rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl hover:border-white/20 hover:shadow-[0_10px_40px_rgba(0,0,0,0.5)] hover:-translate-y-2"
+    }
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             transition={{ duration: 0.5, delay: index * 0.1 }}
-            whileHover={{ y: -10, scale: 1.02, transition: { duration: 0.3 } }}
             className="group h-full"
         >
             <div
-                className="h-full flex flex-col p-8 rounded-none border border-white/10 bg-white/5 backdrop-blur-md transition-all duration-500 group-hover:border-[var(--electric-blue)]/40 group-hover:shadow-[0_0_40px_rgba(14,165,233,0.15)] relative overflow-hidden"
+                className={`h-full flex flex-col p-8 transition-all duration-500 relative overflow-hidden ${containerStyles[variant]}`}
             >
-                {/* Metallic sheen effect on hover */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                {/* Variant-specific decorations */}
+                {variant === 'industrial' && (
+                    <>
+                        <div className="absolute top-0 left-0 w-2 h-2 border-l-2 border-t-2 border-blue-500/50" />
+                        <div className="absolute top-0 right-0 w-2 h-2 border-r-2 border-t-2 border-blue-500/50" />
+                        <div className="absolute bottom-0 left-0 w-2 h-2 border-l-2 border-b-2 border-blue-500/50" />
+                        <div className="absolute bottom-0 right-0 w-2 h-2 border-r-2 border-b-2 border-blue-500/50" />
+                        <div className="absolute inset-0 bg-[linear-gradient(transparent_1px,transparent_1px)] bg-[size:40px_40px] opacity-10 pointer-events-none" />
+                    </>
+                )}
+                
+                {variant === 'artistic' && (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/5 via-transparent to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                )}
+
+                {/* Standard Metallic sheen */}
+                {variant === 'standard' && (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                )}
 
                 {/* Logo Area */}
                 {project.logo_url ? (
-                    <div className="mb-6 relative h-16 w-16 rounded bg-white/5 flex items-center justify-center border border-white/10 group-hover:border-white/30 transition-colors">
+                    <div className={`mb-6 relative h-16 w-16 flex items-center justify-center border transition-colors 
+                        ${variant === 'artistic' ? 'rounded-xl bg-white/5 border-white/10' : 'rounded-none bg-transparent border-white/10'}
+                    `}>
                         <Image
                             src={project.logo_url}
                             alt={`${project.name} logo`}
@@ -51,7 +77,9 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
                         />
                     </div>
                 ) : (
-                    <div className="mb-6 h-16 w-16 rounded bg-white/5 border border-white/10 flex items-center justify-center">
+                    <div className={`mb-6 h-16 w-16 flex items-center justify-center border 
+                        ${variant === 'artistic' ? 'rounded-xl bg-white/5 border-white/10' : 'rounded-none bg-transparent border-white/10'}
+                    `}>
                          <span className="text-2xl font-bold text-white/20">{project.name.charAt(0)}</span>
                     </div>
                 )}
@@ -64,12 +92,18 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
                 </div>
 
                 {/* Project name */}
-                <h3 className="text-2xl font-bold mb-4 text-white group-hover:text-[var(--electric-blue)] transition-colors">
+                <h3 className={`text-2xl font-bold mb-4 text-white transition-colors
+                    ${variant === 'industrial' ? 'font-mono tracking-tight group-hover:text-blue-400' : ''}
+                    ${variant === 'artistic' ? 'group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-purple-200 group-hover:bg-clip-text group-hover:text-transparent' : ''}
+                    ${variant === 'standard' ? 'group-hover:text-[var(--electric-blue)]' : ''}
+                `}>
                     {project.name}
                 </h3>
 
                 {/* Description */}
-                <p className="text-silver-400 mb-8 flex-grow leading-relaxed text-sm font-light">
+                <p className={`mb-8 flex-grow leading-relaxed text-sm
+                    ${variant === 'industrial' ? 'text-blue-200/60 font-mono text-xs' : 'text-silver-400 font-light'}
+                `}>
                     {project.short_description}
                 </p>
 
@@ -80,9 +114,11 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
                             href={project.website_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-3 text-xs font-bold tracking-[0.2em] uppercase text-white hover:text-[var(--electric-blue)] transition-colors group/link"
+                            className={`inline-flex items-center gap-3 text-xs font-bold tracking-[0.2em] uppercase transition-colors group/link
+                                ${variant === 'industrial' ? 'text-blue-400 hover:text-white' : 'text-white hover:text-[var(--electric-blue)]'}
+                            `}
                         >
-                            <span>Visit Platform</span>
+                            <span>{variant === 'industrial' ? '> ACCESS_SYSTEM' : 'Visit Platform'}</span>
                             <svg
                                 className="w-4 h-4 transition-transform group-hover/link:translate-x-1"
                                 fill="none"
