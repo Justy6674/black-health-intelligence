@@ -11,42 +11,20 @@ export const revalidate = 0 // Disable caching for now
 export default async function Home() {
     const supabase = await createClient()
 
-    // Fetch all projects
+    // Fetch "other" projects for the home page innovation lab
     const { data: projects } = await supabase
         .from('projects')
         .select('*')
         .neq('status', 'archived')
+        .eq('category', 'other')
         .order('display_order', { ascending: true })
 
-    const allProjects = (projects || []) as Project[]
-
-    // Categorize projects
-    const clinicalProjects = allProjects.filter(p => p.category === 'clinical')
-    const healthSaasProjects = allProjects.filter(p => p.category === 'health-saas')
-    const otherProjects = allProjects.filter(p => p.category === 'other')
+    const otherProjects = (projects || []) as Project[]
 
     return (
-        <main className="min-h-screen">
+        <main className="min-h-screen bg-[#050505]">
             <Navigation />
             <Hero />
-
-            {clinicalProjects.length > 0 && (
-                <PortfolioSection
-                    id="solutions"
-                    title="Clinical Practice"
-                    description="Direct patient care and clinical services"
-                    projects={clinicalProjects}
-                />
-            )}
-
-            {healthSaasProjects.length > 0 && (
-                <PortfolioSection
-                    id="platform"
-                    title="Health Technology"
-                    description="Innovative SaaS platforms transforming healthcare delivery"
-                    projects={healthSaasProjects}
-                />
-            )}
 
             {otherProjects.length > 0 && (
                 <PortfolioSection

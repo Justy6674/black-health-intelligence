@@ -10,10 +10,10 @@ interface ProjectCardProps {
 }
 
 const statusColors = {
-    active: 'bg-green-500/20 text-green-400 border-green-500/30',
-    development: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    'coming-soon': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-    archived: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    active: 'text-green-400 border-green-500/30 bg-green-500/10',
+    development: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
+    'coming-soon': 'text-purple-400 border-purple-500/30 bg-purple-500/10',
+    archived: 'text-gray-400 border-gray-500/30 bg-gray-500/10',
 }
 
 const statusLabels = {
@@ -28,68 +28,71 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
         <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
+            viewport={{ once: true, margin: "-50px" }}
             transition={{ duration: 0.5, delay: index * 0.1 }}
-            whileHover={{ y: -8, transition: { duration: 0.3 } }}
+            whileHover={{ y: -10, scale: 1.02, transition: { duration: 0.3 } }}
             className="group h-full"
         >
             <div
-                className="h-full flex flex-col p-6 rounded-xl bg-charcoal border-2 border-silver-700/30 shadow-lg transition-all duration-300 group-hover:border-[var(--electric-blue)]/50 group-hover:shadow-[0_0_30px_rgba(14,165,233,0.15)]"
-                style={{
-                    background: 'linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%)',
-                }}
+                className="h-full flex flex-col p-8 rounded-none border border-white/10 bg-white/5 backdrop-blur-md transition-all duration-500 group-hover:border-[var(--electric-blue)]/40 group-hover:shadow-[0_0_40px_rgba(14,165,233,0.15)] relative overflow-hidden"
             >
-                {/* Logo */}
-                {project.logo_url && (
-                    <div className="mb-4 relative h-20 w-20 rounded-lg overflow-hidden bg-charcoal/50 flex items-center justify-center border border-silver-700/20">
+                {/* Metallic sheen effect on hover */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+                {/* Logo Area */}
+                {project.logo_url ? (
+                    <div className="mb-6 relative h-16 w-16 rounded bg-white/5 flex items-center justify-center border border-white/10 group-hover:border-white/30 transition-colors">
                         <Image
                             src={project.logo_url}
                             alt={`${project.name} logo`}
-                            width={80}
-                            height={80}
-                            className="object-contain"
+                            width={64}
+                            height={64}
+                            className="object-contain p-2"
                         />
+                    </div>
+                ) : (
+                    <div className="mb-6 h-16 w-16 rounded bg-white/5 border border-white/10 flex items-center justify-center">
+                         <span className="text-2xl font-bold text-white/20">{project.name.charAt(0)}</span>
                     </div>
                 )}
 
-                {/* Status badge with glow */}
-                <div className="mb-3">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border shadow-lg ${statusColors[project.status]}`}>
+                {/* Status */}
+                <div className="mb-4">
+                    <span className={`inline-flex items-center px-3 py-1 text-[10px] font-bold tracking-widest uppercase border ${statusColors[project.status]}`}>
                         {statusLabels[project.status]}
                     </span>
                 </div>
 
-                {/* Project name with gradient on hover */}
-                <h3 className="text-2xl font-bold mb-3 text-white group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-[var(--electric-blue)] group-hover:bg-clip-text group-hover:text-transparent transition-all">
+                {/* Project name */}
+                <h3 className="text-2xl font-bold mb-4 text-white group-hover:text-[var(--electric-blue)] transition-colors">
                     {project.name}
                 </h3>
 
                 {/* Description */}
-                <p className="text-silver-400 mb-6 flex-grow leading-relaxed">
+                <p className="text-silver-400 mb-8 flex-grow leading-relaxed text-sm font-light">
                     {project.short_description}
                 </p>
 
-                {/* Link button with glow effect */}
+                {/* Action Button */}
                 {project.website_url && (
-                    <a
-                        href={project.website_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-[var(--electric-blue)] hover:text-white transition-all group/link px-4 py-2 rounded-lg border border-[var(--electric-blue)]/30 hover:border-[var(--electric-blue)]/50 hover:shadow-[0_0_15px_rgba(14,165,233,0.2)]"
-                    >
-                        <span className="font-medium">Visit Website</span>
-                        <svg
-                            className="w-4 h-4 transition-transform group-hover/link:translate-x-1"
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
+                    <div className="mt-auto">
+                        <a
+                            href={project.website_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-3 text-xs font-bold tracking-[0.2em] uppercase text-white hover:text-[var(--electric-blue)] transition-colors group/link"
                         >
-                            <path d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
-                        </svg>
-                    </a>
+                            <span>Visit Platform</span>
+                            <svg
+                                className="w-4 h-4 transition-transform group-hover/link:translate-x-1"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                            </svg>
+                        </a>
+                    </div>
                 )}
             </div>
         </motion.div>
