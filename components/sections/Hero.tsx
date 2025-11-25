@@ -21,12 +21,12 @@ export default function Hero() {
                         className="text-6xl md:text-8xl font-bold mb-8 leading-tight tracking-tight"
                     >
                         <span 
-                            className="block text-chrome-3d mb-2"
+                            className="block heading-chrome mb-2 text-6xl md:text-8xl"
                         >
                             BLACK HEALTH
                         </span>
                         <span 
-                            className="block text-chrome-3d"
+                            className="block heading-chrome text-6xl md:text-8xl"
                         >
                             INTELLIGENCE
                         </span>
