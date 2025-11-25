@@ -35,7 +35,7 @@ export const metadata: Metadata = {
         type: "website",
         images: [
             {
-                url: "/master_logo.png",
+                url: "/LOGO.png",
                 width: 500,
                 height: 500,
                 alt: "Black Health Intelligence logo",
@@ -46,12 +46,12 @@ export const metadata: Metadata = {
         card: "summary_large_image",
         title: `${baseTitle} | Healthcare Innovation Portfolio`,
         description: baseDescription,
-        images: ["/master_logo.png"],
+        images: ["/LOGO.png"],
     },
     icons: {
-        icon: "/master_logo.png",
-        shortcut: "/master_logo.png",
-        apple: "/master_logo.png",
+        icon: "/FAVICON.png",
+        shortcut: "/FAVICON.png",
+        apple: "/FAVICON.png",
     },
     alternates: {
         canonical: "/",

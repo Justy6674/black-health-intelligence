@@ -34,7 +34,7 @@ export default function Navigation() {
                             className="inline-flex items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 transition-transform hover:scale-[1.04]"
                         >
                             <Image
-                                src="/master_logo.png"
+                                src="/LOGO.png"
                                 alt="Black Health Intelligence logo"
                                 width={72}
                                 height={72}
