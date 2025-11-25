@@ -14,13 +14,20 @@ function LoginForm() {
     
     // Initialize Supabase client - this is safe in a client component
     // NEXT_PUBLIC_ env vars are available at build time for client bundles
-    const [supabase] = useState(() => createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    ))
+    const [supabase] = useState(() => {
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+            return null
+        }
+        return createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        )
+    })
 
     // Check session on mount
     useEffect(() => {
+        if (!supabase) return
+
         const checkSession = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             if (session) {
@@ -32,6 +39,11 @@ function LoginForm() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!supabase) {
+            setError('Supabase not configured')
+            return
+        }
+
         setError('')
         setLoading(true)
 
