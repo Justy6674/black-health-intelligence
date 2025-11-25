@@ -63,10 +63,10 @@ export const OgTemplate = () => (
                         fontSize: '240px',
                         lineHeight: 0.9,
                         backgroundImage:
-                            'linear-gradient(135deg,#f5f6f8 0%,#cfd2d8 35%,#9fa5af 60%,#4b5160 90%), radial-gradient(circle at 70% 30%,rgba(255,219,194,0.9) 0%,rgba(247,168,146,0.7) 30%,rgba(111,180,255,0.6) 70%)',
+                            'linear-gradient(90deg,#f4f6f8 0%,#c8ccd4 45%,#7e8594 65%,#586070 100%), radial-gradient(circle at 85% 75%,rgba(32,181,255,0.9) 0%,rgba(12,120,255,0.85) 45%,rgba(4,22,64,0.75) 90%)',
                         WebkitBackgroundClip: 'text',
                         color: 'transparent',
-                        textShadow: '0 0 35px rgba(255,255,255,0.25)',
+                        textShadow: '0 0 25px rgba(11,120,255,0.35)',
                         position: 'relative',
                         display: 'block',
                     }}

@@ -35,6 +35,12 @@ export const metadata: Metadata = {
         type: "website",
         images: [
             {
+                url: "/logo-mark.svg",
+                width: 500,
+                height: 500,
+                alt: "Black Health Intelligence logo",
+            },
+            {
                 url: "/opengraph-image",
                 width: 1200,
                 height: 630,
@@ -46,7 +52,7 @@ export const metadata: Metadata = {
         card: "summary_large_image",
         title: `${baseTitle} | Healthcare Innovation Portfolio`,
         description: baseDescription,
-        images: ["/twitter-image"],
+        images: ["/logo-mark.svg"],
     },
     icons: {
         icon: "/icon.svg",

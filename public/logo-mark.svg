@@ -1,39 +1,35 @@
 <svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="chrome" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f2f4f5"/>
-      <stop offset="25%" stop-color="#c4c7cc"/>
-      <stop offset="45%" stop-color="#9298a3"/>
-      <stop offset="60%" stop-color="#727883"/>
-      <stop offset="75%" stop-color="#5d6470"/>
-      <stop offset="100%" stop-color="#252833"/>
+    <linearGradient id="metallic" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f4f6f8"/>
+      <stop offset="40%" stop-color="#c8ccd4"/>
+      <stop offset="65%" stop-color="#7e8594"/>
+      <stop offset="100%" stop-color="#586070"/>
     </linearGradient>
-    <radialGradient id="iridescent" cx="70%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#ffe7d1" stop-opacity="0.8"/>
-      <stop offset="35%" stop-color="#f7a892" stop-opacity="0.6"/>
-      <stop offset="55%" stop-color="#d08fd6" stop-opacity="0.5"/>
-      <stop offset="75%" stop-color="#7ec8ff" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="#2e4f88" stop-opacity="0.65"/>
+    <radialGradient id="blueGlow" cx="85%" cy="80%" r="70%">
+      <stop offset="0%" stop-color="#20b5ff" stop-opacity="0.9"/>
+      <stop offset="45%" stop-color="#0c78ff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#041640" stop-opacity="0.7"/>
     </radialGradient>
-    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="18"/>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="15"/>
     </filter>
-    <mask id="glitchCuts">
+    <mask id="steps">
       <rect width="500" height="500" fill="white"/>
-      <rect x="70" y="120" width="360" height="14" fill="black"/>
-      <rect x="70" y="200" width="360" height="12" fill="black"/>
-      <rect x="70" y="265" width="360" height="16" fill="black"/>
-      <rect x="70" y="330" width="360" height="14" fill="black"/>
+      <rect x="74" y="120" width="352" height="16" fill="black"/>
+      <rect x="74" y="205" width="352" height="14" fill="black"/>
+      <rect x="74" y="285" width="352" height="18" fill="black"/>
+      <rect x="74" y="350" width="352" height="14" fill="black"/>
     </mask>
   </defs>
 
   <rect width="500" height="500" fill="none"/>
-  <g filter="url(#softShadow)" opacity="0.35">
-    <text x="116" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="280" font-weight="900" fill="#000000">B</text>
+  <g filter="url(#shadow)" opacity="0.35">
+    <text x="120" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="300" font-weight="900" fill="#000000">B</text>
   </g>
-  <g mask="url(#glitchCuts)">
-    <text x="116" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="280" font-weight="900" fill="url(#chrome)">B</text>
-    <text x="116" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="280" font-weight="900" fill="url(#iridescent)" opacity="0.8">B</text>
+  <g mask="url(#steps)">
+    <text x="120" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="300" font-weight="900" fill="url(#metallic)">B</text>
+    <text x="120" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="300" font-weight="900" fill="url(#blueGlow)" opacity="0.95">B</text>
   </g>
 </svg>
 

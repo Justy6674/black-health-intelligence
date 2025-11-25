@@ -1,38 +1,35 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="iconChrome" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f4f5f6"/>
-      <stop offset="30%" stop-color="#cfd2d8"/>
-      <stop offset="55%" stop-color="#9ba1ab"/>
-      <stop offset="75%" stop-color="#656b78"/>
-      <stop offset="100%" stop-color="#2c303d"/>
+    <linearGradient id="iconMetallic" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f4f6f8"/>
+      <stop offset="40%" stop-color="#c8ccd4"/>
+      <stop offset="65%" stop-color="#7e8594"/>
+      <stop offset="100%" stop-color="#586070"/>
     </linearGradient>
-    <radialGradient id="iconIridescent" cx="65%" cy="25%" r="80%">
-      <stop offset="0%" stop-color="#ffdbc2" stop-opacity="0.85"/>
-      <stop offset="30%" stop-color="#ffa38f" stop-opacity="0.7"/>
-      <stop offset="55%" stop-color="#cf93d6" stop-opacity="0.6"/>
-      <stop offset="80%" stop-color="#6bb4ff" stop-opacity="0.65"/>
-      <stop offset="100%" stop-color="#1f3a6c" stop-opacity="0.7"/>
+    <radialGradient id="iconBlue" cx="85%" cy="80%" r="75%">
+      <stop offset="0%" stop-color="#1fb4ff" stop-opacity="0.95"/>
+      <stop offset="45%" stop-color="#0c7cff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#04183e" stop-opacity="0.75"/>
     </radialGradient>
-    <filter id="iconSoftShadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="20"/>
+    <filter id="iconShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18"/>
     </filter>
-    <mask id="iconGlitchCuts">
+    <mask id="iconSteps">
       <rect width="512" height="512" fill="white"/>
-      <rect x="90" y="150" width="332" height="16" fill="black"/>
-      <rect x="90" y="232" width="332" height="12" fill="black"/>
-      <rect x="90" y="302" width="332" height="16" fill="black"/>
-      <rect x="90" y="360" width="332" height="14" fill="black"/>
+      <rect x="94" y="150" width="324" height="18" fill="black"/>
+      <rect x="94" y="236" width="324" height="14" fill="black"/>
+      <rect x="94" y="306" width="324" height="18" fill="black"/>
+      <rect x="94" y="368" width="324" height="14" fill="black"/>
     </mask>
   </defs>
 
   <rect width="512" height="512" fill="none"/>
-  <g filter="url(#iconSoftShadow)" opacity="0.4">
-    <text x="140" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="290" font-weight="900" fill="#000000">B</text>
+  <g filter="url(#iconShadow)" opacity="0.35">
+    <text x="146" y="374" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="310" font-weight="900" fill="#000000">B</text>
   </g>
-  <g mask="url(#iconGlitchCuts)">
-    <text x="140" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="290" font-weight="900" fill="url(#iconChrome)">B</text>
-    <text x="140" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="290" font-weight="900" fill="url(#iconIridescent)" opacity="0.8">B</text>
+  <g mask="url(#iconSteps)">
+    <text x="146" y="374" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="310" font-weight="900" fill="url(#iconMetallic)">B</text>
+    <text x="146" y="374" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="310" font-weight="900" fill="url(#iconBlue)" opacity="0.95">B</text>
   </g>
 </svg>
 
