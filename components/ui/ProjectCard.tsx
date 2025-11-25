@@ -110,14 +110,9 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                 {/* Action Button */}
                 {project.website_url && (
                     <div className="mt-auto">
-                        <a
-                            href={project.website_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`inline-flex items-center gap-3 text-xs font-bold tracking-[0.2em] uppercase transition-colors group/link
-                                ${variant === 'industrial' ? 'text-blue-400 hover:text-white' : 'text-white hover:text-[var(--electric-blue)]'}
-                            `}
-                        >
+                        <div className="inline-flex items-center gap-3 text-xs font-bold tracking-[0.2em] uppercase transition-colors group/link
+                            ${variant === 'industrial' ? 'text-blue-400 hover:text-white' : 'text-white hover:text-[var(--electric-blue)]'}
+                        ">
                             <span>{variant === 'industrial' ? '> ACCESS_SYSTEM' : 'Visit Platform'}</span>
                             <svg
                                 className="w-4 h-4 transition-transform group-hover/link:translate-x-1"
@@ -127,7 +122,7 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                             >
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
                             </svg>
-                        </a>
+                        </div>
                     </div>
                 )}
             </div>

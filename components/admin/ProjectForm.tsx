@@ -5,14 +5,15 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
-import { ProjectCategory, ProjectStatus } from '@/lib/types'
+import { ProjectCategory, ProjectStatus, ProjectSubcategory, MarketScope, DevelopmentPhase } from '@/lib/types'
 
 interface ProjectFormProps {
     mode: 'create' | 'edit'
-    initialData?: {
-        id?: string
+    initialData?: Partial<{
+        id: string
         name: string
         category: ProjectCategory
+        subcategory?: ProjectSubcategory
         short_description: string
         long_description?: string
         logo_url?: string
@@ -20,7 +21,17 @@ interface ProjectFormProps {
         status: ProjectStatus
         display_order: number
         featured: boolean
-    }
+        problem_solves?: string
+        target_audience?: string
+        build_details?: string
+        estimated_release?: string
+        revenue_stream?: string
+        market_scope?: MarketScope
+        for_sale?: boolean
+        sale_price?: number
+        investment_opportunity?: boolean
+        development_phase?: DevelopmentPhase
+    }>
 }
 
 export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
@@ -30,6 +41,7 @@ export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         category: initialData?.category || 'health-saas' as ProjectCategory,
+        subcategory: initialData?.subcategory || undefined,
         short_description: initialData?.short_description || '',
         long_description: initialData?.long_description || '',
         logo_url: initialData?.logo_url || '',
@@ -37,6 +49,16 @@ export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
         status: initialData?.status || 'development' as ProjectStatus,
         display_order: initialData?.display_order || 0,
         featured: initialData?.featured || false,
+        problem_solves: initialData?.problem_solves || '',
+        target_audience: initialData?.target_audience || '',
+        build_details: initialData?.build_details || '',
+        estimated_release: initialData?.estimated_release || '',
+        revenue_stream: initialData?.revenue_stream || '',
+        market_scope: initialData?.market_scope || undefined,
+        for_sale: initialData?.for_sale || false,
+        sale_price: initialData?.sale_price || '',
+        investment_opportunity: initialData?.investment_opportunity || false,
+        development_phase: initialData?.development_phase || undefined,
     })
 
     const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -90,11 +112,21 @@ export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
             // Generate slug from name
             const slug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
-            const projectData = {
+            const projectData: any = {
                 ...formData,
                 slug,
                 logo_url: logoUrl,
+                sale_price: formData.sale_price ? parseFloat(formData.sale_price.toString()) : null,
+                estimated_release: formData.estimated_release || null,
+                subcategory: formData.category === 'health-saas' ? formData.subcategory : null,
             }
+
+            // Remove empty strings and convert to null
+            Object.keys(projectData).forEach(key => {
+                if (projectData[key] === '' || projectData[key] === undefined) {
+                    projectData[key] = null
+                }
+            })
 
             if (mode === 'create') {
                 const { error: insertError } = await supabase
@@ -128,178 +160,370 @@ export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
                 </div>
             )}
 
-            {/* Logo upload */}
-            <div>
-                <label className="block text-sm font-medium text-silver-300 mb-2">
-                    Project Logo
-                </label>
-                <div
-                    {...getRootProps()}
-                    className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragActive
-                        ? 'border-slate-blue bg-slate-blue/10'
-                        : 'border-silver-700/30 hover:border-silver-600'
-                        }`}
-                >
-                    <input {...getInputProps()} />
-                    {logoPreview ? (
-                        <div className="space-y-4">
-                            <div className="relative w-32 h-32 mx-auto">
-                                <Image
-                                    src={logoPreview}
-                                    alt="Logo preview"
-                                    width={128}
-                                    height={128}
-                                    className="object-contain"
-                                />
+            {/* Basic Information Section */}
+            <div className="border-b border-white/10 pb-6">
+                <h2 className="text-xl font-bold text-white mb-4">Basic Information</h2>
+                
+                {/* Logo upload */}
+                <div className="mb-6">
+                    <label className="block text-sm font-medium text-silver-300 mb-2">
+                        Project Logo
+                    </label>
+                    <div
+                        {...getRootProps()}
+                        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragActive
+                            ? 'border-slate-blue bg-slate-blue/10'
+                            : 'border-silver-700/30 hover:border-silver-600'
+                            }`}
+                    >
+                        <input {...getInputProps()} />
+                        {logoPreview ? (
+                            <div className="space-y-4">
+                                <div className="relative w-32 h-32 mx-auto">
+                                    <Image
+                                        src={logoPreview}
+                                        alt="Logo preview"
+                                        width={128}
+                                        height={128}
+                                        className="object-contain"
+                                    />
+                                </div>
+                                <p className="text-sm text-silver-400">Click or drag to replace</p>
                             </div>
-                            <p className="text-sm text-silver-400">Click or drag to replace</p>
-                        </div>
-                    ) : (
-                        <div>
-                            <svg
-                                className="w-12 h-12 mx-auto mb-4 text-silver-600"
-                                fill="none"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                            </svg>
-                            <p className="text-silver-400">Drag & drop logo here, or click to select</p>
-                            <p className="text-sm text-silver-600 mt-2">PNG, JPG, SVG up to 10MB</p>
-                        </div>
-                    )}
+                        ) : (
+                            <div>
+                                <svg
+                                    className="w-12 h-12 mx-auto mb-4 text-silver-600"
+                                    fill="none"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth="2"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                <p className="text-silver-400">Drag & drop logo here, or click to select</p>
+                                <p className="text-sm text-silver-600 mt-2">PNG, JPG, SVG up to 10MB</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Project name */}
+                <div className="mb-4">
+                    <label htmlFor="name" className="block text-sm font-medium text-silver-300 mb-2">
+                        Project Name *
+                    </label>
+                    <input
+                        id="name"
+                        type="text"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                        placeholder="e.g., Downscale Weight Loss Clinic"
+                    />
+                </div>
+
+                {/* Category */}
+                <div className="mb-4">
+                    <label htmlFor="category" className="block text-sm font-medium text-silver-300 mb-2">
+                        Category *
+                    </label>
+                    <select
+                        id="category"
+                        required
+                        value={formData.category}
+                        onChange={(e) => setFormData({ ...formData, category: e.target.value as ProjectCategory, subcategory: undefined })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                    >
+                        <option value="clinical">Clinical Practice</option>
+                        <option value="health-saas">Health SaaS</option>
+                        <option value="other">Other Ventures</option>
+                    </select>
+                </div>
+
+                {/* Subcategory (only for health-saas) */}
+                {formData.category === 'health-saas' && (
+                    <div className="mb-4">
+                        <label htmlFor="subcategory" className="block text-sm font-medium text-silver-300 mb-2">
+                            Subcategory *
+                        </label>
+                        <select
+                            id="subcategory"
+                            required
+                            value={formData.subcategory || ''}
+                            onChange={(e) => setFormData({ ...formData, subcategory: e.target.value as ProjectSubcategory })}
+                            className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                        >
+                            <option value="">Select subcategory</option>
+                            <option value="health-saas">Health-Related SaaS</option>
+                            <option value="non-health-saas">Non-Health-Related SaaS</option>
+                        </select>
+                    </div>
+                )}
+
+                {/* Short description */}
+                <div className="mb-4">
+                    <label htmlFor="short_description" className="block text-sm font-medium text-silver-300 mb-2">
+                        Short Description * (for card preview)
+                    </label>
+                    <textarea
+                        id="short_description"
+                        required
+                        rows={3}
+                        value={formData.short_description}
+                        onChange={(e) => setFormData({ ...formData, short_description: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent resize-none"
+                        placeholder="Brief description of what this project does..."
+                    />
+                </div>
+
+                {/* Long description */}
+                <div className="mb-4">
+                    <label htmlFor="long_description" className="block text-sm font-medium text-silver-300 mb-2">
+                        Long Description (optional)
+                    </label>
+                    <textarea
+                        id="long_description"
+                        rows={6}
+                        value={formData.long_description}
+                        onChange={(e) => setFormData({ ...formData, long_description: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent resize-none"
+                        placeholder="Detailed description for future use..."
+                    />
+                </div>
+
+                {/* Website URL */}
+                <div className="mb-4">
+                    <label htmlFor="website_url" className="block text-sm font-medium text-silver-300 mb-2">
+                        Website URL
+                    </label>
+                    <input
+                        id="website_url"
+                        type="url"
+                        value={formData.website_url}
+                        onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                        placeholder="https://example.com"
+                    />
+                </div>
+
+                {/* Status */}
+                <div className="mb-4">
+                    <label htmlFor="status" className="block text-sm font-medium text-silver-300 mb-2">
+                        Status *
+                    </label>
+                    <select
+                        id="status"
+                        required
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value as ProjectStatus })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                    >
+                        <option value="active">Active</option>
+                        <option value="development">In Development</option>
+                        <option value="coming-soon">Coming Soon</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                </div>
+
+                {/* Development Phase */}
+                <div className="mb-4">
+                    <label htmlFor="development_phase" className="block text-sm font-medium text-silver-300 mb-2">
+                        Development Phase
+                    </label>
+                    <select
+                        id="development_phase"
+                        value={formData.development_phase || ''}
+                        onChange={(e) => setFormData({ ...formData, development_phase: e.target.value as DevelopmentPhase || undefined })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                    >
+                        <option value="">Select phase</option>
+                        <option value="concept">Concept</option>
+                        <option value="mvp">MVP</option>
+                        <option value="beta">Beta</option>
+                        <option value="production">Production</option>
+                    </select>
+                </div>
+
+                {/* Display order */}
+                <div className="mb-4">
+                    <label htmlFor="display_order" className="block text-sm font-medium text-silver-300 mb-2">
+                        Display Order (lower numbers appear first)
+                    </label>
+                    <input
+                        id="display_order"
+                        type="number"
+                        value={formData.display_order}
+                        onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                        placeholder="0"
+                    />
+                </div>
+
+                {/* Featured toggle */}
+                <div className="flex items-center gap-3">
+                    <input
+                        id="featured"
+                        type="checkbox"
+                        checked={formData.featured}
+                        onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
+                        className="w-5 h-5 rounded bg-charcoal border-silver-700/30 text-slate-blue focus:ring-2 focus:ring-slate-blue"
+                    />
+                    <label htmlFor="featured" className="text-sm font-medium text-silver-300">
+                        Featured project
+                    </label>
                 </div>
             </div>
 
-            {/* Project name */}
-            <div>
-                <label htmlFor="name" className="block text-sm font-medium text-silver-300 mb-2">
-                    Project Name *
-                </label>
-                <input
-                    id="name"
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                    placeholder="e.g., Downscale Weight Loss Clinic"
-                />
+            {/* Business Details Section */}
+            <div className="border-b border-white/10 pb-6">
+                <h2 className="text-xl font-bold text-white mb-4">Business Details</h2>
+
+                {/* Problem it solves */}
+                <div className="mb-4">
+                    <label htmlFor="problem_solves" className="block text-sm font-medium text-silver-300 mb-2">
+                        Problem It Solves
+                    </label>
+                    <textarea
+                        id="problem_solves"
+                        rows={4}
+                        value={formData.problem_solves}
+                        onChange={(e) => setFormData({ ...formData, problem_solves: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent resize-none"
+                        placeholder="Describe the problem this project solves..."
+                    />
+                </div>
+
+                {/* Target audience */}
+                <div className="mb-4">
+                    <label htmlFor="target_audience" className="block text-sm font-medium text-silver-300 mb-2">
+                        Target Audience
+                    </label>
+                    <textarea
+                        id="target_audience"
+                        rows={3}
+                        value={formData.target_audience}
+                        onChange={(e) => setFormData({ ...formData, target_audience: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent resize-none"
+                        placeholder="Who is this product for?"
+                    />
+                </div>
+
+                {/* Build details */}
+                <div className="mb-4">
+                    <label htmlFor="build_details" className="block text-sm font-medium text-silver-300 mb-2">
+                        Build Details / Tech Stack
+                    </label>
+                    <textarea
+                        id="build_details"
+                        rows={3}
+                        value={formData.build_details}
+                        onChange={(e) => setFormData({ ...formData, build_details: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent resize-none font-mono text-sm"
+                        placeholder="e.g., Next.js, React, TypeScript, Supabase..."
+                    />
+                </div>
+
+                {/* Estimated release */}
+                <div className="mb-4">
+                    <label htmlFor="estimated_release" className="block text-sm font-medium text-silver-300 mb-2">
+                        Estimated Release Date
+                    </label>
+                    <input
+                        id="estimated_release"
+                        type="date"
+                        value={formData.estimated_release}
+                        onChange={(e) => setFormData({ ...formData, estimated_release: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                    />
+                </div>
+
+                {/* Revenue stream */}
+                <div className="mb-4">
+                    <label htmlFor="revenue_stream" className="block text-sm font-medium text-silver-300 mb-2">
+                        Revenue Stream
+                    </label>
+                    <input
+                        id="revenue_stream"
+                        type="text"
+                        value={formData.revenue_stream}
+                        onChange={(e) => setFormData({ ...formData, revenue_stream: e.target.value })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                        placeholder="e.g., Subscription-based, One-time purchase, Freemium..."
+                    />
+                </div>
+
+                {/* Market scope */}
+                <div className="mb-4">
+                    <label htmlFor="market_scope" className="block text-sm font-medium text-silver-300 mb-2">
+                        Market Scope
+                    </label>
+                    <select
+                        id="market_scope"
+                        value={formData.market_scope || ''}
+                        onChange={(e) => setFormData({ ...formData, market_scope: e.target.value as MarketScope || undefined })}
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                    >
+                        <option value="">Select market scope</option>
+                        <option value="Local Australian">Local Australian</option>
+                        <option value="International">International</option>
+                        <option value="Both">Both</option>
+                    </select>
+                </div>
             </div>
 
-            {/* Category */}
-            <div>
-                <label htmlFor="category" className="block text-sm font-medium text-silver-300 mb-2">
-                    Category *
-                </label>
-                <select
-                    id="category"
-                    required
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as ProjectCategory })}
-                    className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                >
-                    <option value="clinical">Clinical Practice</option>
-                    <option value="health-saas">Health SaaS</option>
-                    <option value="other">Other Ventures</option>
-                </select>
-            </div>
+            {/* Investment & Sale Section */}
+            <div className="pb-6">
+                <h2 className="text-xl font-bold text-white mb-4">Investment & Sale</h2>
 
-            {/* Short description */}
-            <div>
-                <label htmlFor="short_description" className="block text-sm font-medium text-silver-300 mb-2">
-                    Short Description * (for card preview)
-                </label>
-                <textarea
-                    id="short_description"
-                    required
-                    rows={3}
-                    value={formData.short_description}
-                    onChange={(e) => setFormData({ ...formData, short_description: e.target.value })}
-                    className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent resize-none"
-                    placeholder="Brief description of what this project does..."
-                />
-            </div>
+                {/* For sale */}
+                <div className="mb-4 flex items-center gap-3">
+                    <input
+                        id="for_sale"
+                        type="checkbox"
+                        checked={formData.for_sale}
+                        onChange={(e) => setFormData({ ...formData, for_sale: e.target.checked })}
+                        className="w-5 h-5 rounded bg-charcoal border-silver-700/30 text-slate-blue focus:ring-2 focus:ring-slate-blue"
+                    />
+                    <label htmlFor="for_sale" className="text-sm font-medium text-silver-300">
+                        Available for Sale
+                    </label>
+                </div>
 
-            {/* Long description */}
-            <div>
-                <label htmlFor="long_description" className="block text-sm font-medium text-silver-300 mb-2">
-                    Long Description (optional)
-                </label>
-                <textarea
-                    id="long_description"
-                    rows={6}
-                    value={formData.long_description}
-                    onChange={(e) => setFormData({ ...formData, long_description: e.target.value })}
-                    className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent resize-none"
-                    placeholder="Detailed description for future use..."
-                />
-            </div>
+                {/* Sale price */}
+                {formData.for_sale && (
+                    <div className="mb-4">
+                        <label htmlFor="sale_price" className="block text-sm font-medium text-silver-300 mb-2">
+                            Sale Price (AUD)
+                        </label>
+                        <input
+                            id="sale_price"
+                            type="number"
+                            step="0.01"
+                            value={formData.sale_price}
+                            onChange={(e) => setFormData({ ...formData, sale_price: e.target.value ? parseFloat(e.target.value) : '' })}
+                            className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                            placeholder="0.00"
+                        />
+                    </div>
+                )}
 
-            {/* Website URL */}
-            <div>
-                <label htmlFor="website_url" className="block text-sm font-medium text-silver-300 mb-2">
-                    Website URL
-                </label>
-                <input
-                    id="website_url"
-                    type="url"
-                    value={formData.website_url}
-                    onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
-                    className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                    placeholder="https://example.com"
-                />
-            </div>
-
-            {/* Status */}
-            <div>
-                <label htmlFor="status" className="block text-sm font-medium text-silver-300 mb-2">
-                    Status *
-                </label>
-                <select
-                    id="status"
-                    required
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as ProjectStatus })}
-                    className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                >
-                    <option value="active">Active</option>
-                    <option value="development">In Development</option>
-                    <option value="coming-soon">Coming Soon</option>
-                    <option value="archived">Archived</option>
-                </select>
-            </div>
-
-            {/* Display order */}
-            <div>
-                <label htmlFor="display_order" className="block text-sm font-medium text-silver-300 mb-2">
-                    Display Order (lower numbers appear first)
-                </label>
-                <input
-                    id="display_order"
-                    type="number"
-                    value={formData.display_order}
-                    onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) })}
-                    className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                    placeholder="0"
-                />
-            </div>
-
-            {/* Featured toggle */}
-            <div className="flex items-center gap-3">
-                <input
-                    id="featured"
-                    type="checkbox"
-                    checked={formData.featured}
-                    onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
-                    className="w-5 h-5 rounded bg-charcoal border-silver-700/30 text-slate-blue focus:ring-2 focus:ring-slate-blue"
-                />
-                <label htmlFor="featured" className="text-sm font-medium text-silver-300">
-                    Featured project
-                </label>
+                {/* Investment opportunity */}
+                <div className="mb-4 flex items-center gap-3">
+                    <input
+                        id="investment_opportunity"
+                        type="checkbox"
+                        checked={formData.investment_opportunity}
+                        onChange={(e) => setFormData({ ...formData, investment_opportunity: e.target.checked })}
+                        className="w-5 h-5 rounded bg-charcoal border-silver-700/30 text-slate-blue focus:ring-2 focus:ring-slate-blue"
+                    />
+                    <label htmlFor="investment_opportunity" className="text-sm font-medium text-silver-300">
+                        Seeking Investment / Partners
+                    </label>
+                </div>
             </div>
 
             {/* Submit buttons */}

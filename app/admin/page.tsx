@@ -52,6 +52,12 @@ export default async function AdminDashboard() {
                             <p className="text-sm text-silver-400">Create a new portfolio project</p>
                         </div>
                     </Link>
+                    <Link href="/admin/solutions" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-silver-700/30">
+                            <h3 className="font-semibold text-white mb-1">Edit Solutions Page</h3>
+                            <p className="text-sm text-silver-400">Manage content for the Solutions/About page</p>
+                        </div>
+                    </Link>
                     <Link href="/" className="block">
                         <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-silver-700/30">
                             <h3 className="font-semibold text-white mb-1">View Public Site</h3>
