@@ -1,11 +1,14 @@
 'use client'
 
+import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import PartnerLoginModal from '@/components/modals/PartnerLoginModal'
 
 export default function Navigation() {
     const pathname = usePathname()
+    const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false)
 
     const isActive = (path: string) => pathname === path
 
@@ -15,7 +18,7 @@ export default function Navigation() {
                 <div className="flex items-center justify-between">
                     {/* Left: Utility Icons (Mockup Style) */}
                     <div className="flex items-center gap-6">
-                        <button className="text-silver-400 hover:text-white transition-colors group">
+                        <button className="md:hidden text-silver-400 hover:text-white transition-colors group">
                             <svg className="w-5 h-5 group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 6h16M4 12h16M4 18h16"></path>
                             </svg>
@@ -75,9 +78,19 @@ export default function Navigation() {
                         >
                             Contact
                         </Link>
+                        <button
+                            onClick={() => setIsPartnerModalOpen(true)}
+                            className="text-xs font-semibold tracking-[0.25em] uppercase px-4 py-2 border border-white/30 rounded-full text-white hover:border-[var(--electric-blue)] hover:text-[var(--electric-blue)] hover:shadow-[0_0_18px_rgba(14,165,233,0.35)] transition-all"
+                        >
+                            Partner Login
+                        </button>
                     </div>
                 </div>
             </div>
+            <PartnerLoginModal
+                open={isPartnerModalOpen}
+                onClose={() => setIsPartnerModalOpen(false)}
+            />
         </nav>
     )
 }
