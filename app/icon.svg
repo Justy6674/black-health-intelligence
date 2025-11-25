@@ -1,28 +1,33 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="iconGlow" cx="50%" cy="50%" r="70%">
-      <stop offset="0%" stop-color="#6d90ff"/>
-      <stop offset="60%" stop-color="#3f4fa4" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#050505" stop-opacity="0"/>
+    <radialGradient id="iconBg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#f7f8fa"/>
+      <stop offset="50%" stop-color="#d7d8dc"/>
+      <stop offset="100%" stop-color="#6d727a"/>
     </radialGradient>
-    <filter id="iconBlur" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="18"/>
+    <filter id="iconShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18" />
     </filter>
-    <mask id="iconGlitch">
+    <mask id="iconCut">
       <rect width="512" height="512" fill="white"/>
-      <rect x="96" y="156" width="320" height="14" fill="black"/>
-      <rect x="96" y="238" width="320" height="10" fill="black"/>
-      <rect x="96" y="304" width="320" height="14" fill="black"/>
-      <rect x="96" y="360" width="320" height="12" fill="black"/>
+      <rect x="80" y="150" width="352" height="16" fill="black"/>
+      <rect x="80" y="230" width="352" height="12" fill="black"/>
+      <rect x="80" y="300" width="352" height="14" fill="black"/>
+      <rect x="80" y="360" width="352" height="12" fill="black"/>
     </mask>
   </defs>
 
   <rect width="512" height="512" fill="#050505"/>
-  <circle cx="256" cy="256" r="230" fill="url(#iconGlow)" filter="url(#iconBlur)" opacity="0.95"/>
+  <circle cx="256" cy="256" r="240" fill="url(#iconBg)"/>
+  <circle cx="256" cy="256" r="220" fill="none" stroke="rgba(0,0,0,0.15)" stroke-width="2"/>
 
-  <g mask="url(#iconGlitch)">
-    <text x="155" y="350" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="270" font-weight="900" fill="#040404" letter-spacing="-25">B</text>
-    <text x="165" y="350" font-family="'Arial Black', 'Space Grotesk', sans-serif" font-size="270" font-weight="900" fill="#0f1116" letter-spacing="-25" opacity="0.25">B</text>
+  <g filter="url(#iconShadow)" opacity="0.3">
+    <text x="150" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="270" font-weight="900" fill="#050505">B</text>
+  </g>
+
+  <g mask="url(#iconCut)">
+    <text x="150" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="270" font-weight="900" fill="#050505">B</text>
+    <text x="160" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="270" font-weight="900" fill="#1a1c22" opacity="0.35">B</text>
   </g>
 </svg>
 
