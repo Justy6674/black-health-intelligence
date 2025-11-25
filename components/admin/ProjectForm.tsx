@@ -14,9 +14,9 @@ interface ProjectFormProps {
         name: string
         category: ProjectCategory
         short_description: string
-        long_description: string
-        logo_url: string
-        website_url: string
+        long_description?: string
+        logo_url?: string
+        website_url?: string
         status: ProjectStatus
         display_order: number
         featured: boolean
@@ -136,8 +136,8 @@ export default function ProjectForm({ mode, initialData }: ProjectFormProps) {
                 <div
                     {...getRootProps()}
                     className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragActive
-                            ? 'border-slate-blue bg-slate-blue/10'
-                            : 'border-silver-700/30 hover:border-silver-600'
+                        ? 'border-slate-blue bg-slate-blue/10'
+                        : 'border-silver-700/30 hover:border-silver-600'
                         }`}
                 >
                     <input {...getInputProps()} />

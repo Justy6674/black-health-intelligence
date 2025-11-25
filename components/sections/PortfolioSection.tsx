@@ -20,19 +20,20 @@ export default function PortfolioSection({ title, description, projects }: Portf
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6 }}
-                className="mb-12"
+                className="mb-12 text-center"
             >
-                <h2 className="heading-lg mb-4 text-white">
+                <h2 className="heading-lg mb-4 bg-gradient-to-r from-white to-silver-300 bg-clip-text text-transparent inline-block">
                     {title}
                 </h2>
+                <div className="w-24 h-1 bg-gradient-to-r from-transparent via-metallic to-transparent mx-auto mb-6"></div>
                 {description && (
-                    <p className="text-silver-400 text-lg max-w-3xl">
+                    <p className="text-silver-400 text-lg max-w-3xl mx-auto">
                         {description}
                     </p>
                 )}
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {projects.map((project, index) => (
                     <ProjectCard key={project.id} project={project} index={index} />
                 ))}

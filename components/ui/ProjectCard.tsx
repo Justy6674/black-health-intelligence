@@ -30,12 +30,18 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.5, delay: index * 0.1 }}
-            className="group"
+            whileHover={{ y: -8, transition: { duration: 0.3 } }}
+            className="group h-full"
         >
-            <div className="card card-hover h-full flex flex-col">
+            <div
+                className="h-full flex flex-col p-6 rounded-xl bg-charcoal border-2 border-silver-700/30 shadow-lg transition-all duration-300 group-hover:border-silver-500/50 group-hover:shadow-[0_0_30px_rgba(192,192,192,0.15)]"
+                style={{
+                    background: 'linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%)',
+                }}
+            >
                 {/* Logo */}
                 {project.logo_url && (
-                    <div className="mb-4 relative h-20 w-20 rounded-lg overflow-hidden bg-charcoal/50 flex items-center justify-center">
+                    <div className="mb-4 relative h-20 w-20 rounded-lg overflow-hidden bg-charcoal/50 flex items-center justify-center border border-silver-700/20">
                         <Image
                             src={project.logo_url}
                             alt={`${project.name} logo`}
@@ -46,15 +52,15 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
                     </div>
                 )}
 
-                {/* Status badge */}
+                {/* Status badge with glow */}
                 <div className="mb-3">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${statusColors[project.status]}`}>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border shadow-lg ${statusColors[project.status]}`}>
                         {statusLabels[project.status]}
                     </span>
                 </div>
 
-                {/* Project name */}
-                <h3 className="text-2xl font-bold mb-3 text-white group-hover:text-gradient transition-all">
+                {/* Project name with gradient on hover */}
+                <h3 className="text-2xl font-bold mb-3 text-white group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-silver-300 group-hover:bg-clip-text group-hover:text-transparent transition-all">
                     {project.name}
                 </h3>
 
@@ -63,13 +69,13 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
                     {project.short_description}
                 </p>
 
-                {/* Link button */}
+                {/* Link button with glow effect */}
                 {project.website_url && (
                     <a
                         href={project.website_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-metallic hover:text-white transition-colors group/link"
+                        className="inline-flex items-center gap-2 text-metallic hover:text-white transition-all group/link px-4 py-2 rounded-lg border border-silver-700/30 hover:border-silver-500/50 hover:shadow-[0_0_15px_rgba(192,192,192,0.2)]"
                     >
                         <span className="font-medium">Visit Website</span>
                         <svg

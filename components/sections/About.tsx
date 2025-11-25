@@ -14,12 +14,20 @@ export default function About() {
             >
                 {/* Section header */}
                 <div className="text-center mb-12">
-                    <h2 className="heading-lg mb-6 text-white">About the Founder</h2>
-                    <div className="w-24 h-1 bg-metallic-gradient mx-auto mb-8"></div>
+                    <h2 className="heading-lg mb-6 bg-gradient-to-r from-white to-silver-300 bg-clip-text text-transparent inline-block">
+                        About the Founder
+                    </h2>
+                    <div className="w-24 h-1 bg-gradient-to-r from-transparent via-metallic to-transparent mx-auto mb-8"></div>
                 </div>
 
                 {/* Content */}
-                <div className="card glass-effect">
+                <div
+                    className="p-8 rounded-xl border-2 border-silver-700/30 shadow-lg hover:border-silver-500/50 hover:shadow-[0_0_30px_rgba(192,192,192,0.1)] transition-all duration-300"
+                    style={{
+                        background: 'linear-gradient(135deg, rgba(26,26,26,0.8) 0%, rgba(15,15,15,0.8) 100%)',
+                        backdropFilter: 'blur(10px)',
+                    }}
+                >
                     <div className="prose prose-invert max-w-none">
                         <p className="text-lg text-silver-300 leading-relaxed mb-6">
                             Black Health Intelligence is a healthcare innovation portfolio founded by a Nurse Practitioner
