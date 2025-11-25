@@ -28,13 +28,13 @@ export default function Navigation() {
                         <Link
                             href="/"
                             aria-label="Black Health Intelligence home"
-                            className="inline-flex items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 transition-transform hover:scale-[1.02]"
+                            className="inline-flex items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 transition-transform hover:scale-[1.04]"
                         >
                             <Image
-                                src="/logo-mark.svg"
+                                src="/master_logo.png"
                                 alt="Black Health Intelligence logo"
-                                width={56}
-                                height={56}
+                                width={72}
+                                height={72}
                                 priority
                             />
                         </Link>

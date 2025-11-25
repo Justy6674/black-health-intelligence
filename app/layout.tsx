@@ -35,16 +35,10 @@ export const metadata: Metadata = {
         type: "website",
         images: [
             {
-                url: "/logo-mark.svg",
+                url: "/master_logo.png",
                 width: 500,
                 height: 500,
                 alt: "Black Health Intelligence logo",
-            },
-            {
-                url: "/opengraph-image",
-                width: 1200,
-                height: 630,
-                alt: "Black Health Intelligence brand preview with Medicare telehealth context",
             },
         ],
     },
@@ -52,12 +46,12 @@ export const metadata: Metadata = {
         card: "summary_large_image",
         title: `${baseTitle} | Healthcare Innovation Portfolio`,
         description: baseDescription,
-        images: ["/logo-mark.svg"],
+        images: ["/master_logo.png"],
     },
     icons: {
-        icon: "/icon.svg",
-        shortcut: "/icon.svg",
-        apple: "/icon.svg",
+        icon: "/master_logo.png",
+        shortcut: "/master_logo.png",
+        apple: "/master_logo.png",
     },
     alternates: {
         canonical: "/",
