@@ -29,7 +29,7 @@ export default function PlatformPageClient({
                 {/* Clinical Site Section */}
                 {clinicalProject && (
                     <section className="mb-24">
-                        <h2 className="text-3xl md:text-4xl font-bold mb-8 text-white">Clinical Site</h2>
+                        <h2 className="heading-chrome text-3xl md:text-4xl mb-8">Clinical Site</h2>
                         <div 
                             onClick={() => handleCardClick(clinicalProject)}
                             className="cursor-pointer group"
@@ -60,7 +60,7 @@ export default function PlatformPageClient({
                 {/* Health-Related SaaS Section */}
                 {healthSaasProjects.length > 0 && (
                     <section className="mb-24">
-                        <h2 className="text-3xl md:text-4xl font-bold mb-8 text-white">Health-Related SaaS</h2>
+                        <h2 className="heading-chrome text-3xl md:text-4xl mb-8">Health-Related SaaS</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
                             {healthSaasProjects.map((project, index) => (
                                 <div key={project.id} onClick={() => handleCardClick(project)} className="cursor-pointer">
@@ -78,7 +78,7 @@ export default function PlatformPageClient({
                 {/* Non-Health-Related SaaS Section */}
                 {nonHealthSaasProjects.length > 0 && (
                     <section className="mb-24">
-                        <h2 className="text-3xl md:text-4xl font-bold mb-8 text-white">Non-Health-Related SaaS</h2>
+                        <h2 className="heading-chrome text-3xl md:text-4xl mb-8">Non-Health-Related SaaS</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
                             {nonHealthSaasProjects.map((project, index) => (
                                 <div key={project.id} onClick={() => handleCardClick(project)} className="cursor-pointer">
@@ -106,4 +106,5 @@ export default function PlatformPageClient({
         </>
     )
 }
+
 

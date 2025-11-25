@@ -16,21 +16,15 @@ export default function Hero() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
                 >
-                    {/* Main title with SHARP METALLIC GRADIENT */}
-                    <motion.h1
-                        className="text-6xl md:text-8xl font-bold mb-8 leading-tight tracking-tight"
-                    >
-                        <span 
-                            className="block heading-chrome mb-2 text-6xl md:text-8xl"
-                        >
+                    {/* Main title with POLISHED CHROME */}
+                    <motion.h1 className="mb-8 leading-tight">
+                        <span className="block heading-chrome text-6xl md:text-8xl mb-2">
                             BLACK HEALTH
                         </span>
-                        <span 
-                            className="block heading-chrome text-6xl md:text-8xl"
-                        >
+                        <span className="block heading-chrome text-6xl md:text-8xl">
                             INTELLIGENCE
                         </span>
-                        <span className="block text-sm md:text-base tracking-[0.8em] text-white/70 uppercase mt-2">
+                        <span className="block text-sm md:text-base tracking-[0.8em] text-white/70 uppercase mt-4">
                             Pty Ltd
                         </span>
                     </motion.h1>

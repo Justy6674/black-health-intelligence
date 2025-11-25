@@ -25,9 +25,8 @@ export default function SolutionsPageClient({ sections }: SolutionsPageClientPro
             <div className="pt-32 pb-20 relative z-10 section-container">
                 <div className="mb-16 relative">
                     <div className="absolute -left-4 top-0 bottom-0 w-1 bg-blue-500/50"></div>
-                    <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tighter mb-4 pl-6">
-                        OUR_STORY
-                        <span className="animate-pulse text-blue-500">_</span>
+                    <h1 className="heading-chrome text-4xl md:text-5xl mb-4 pl-6">
+                        OUR STORY
                     </h1>
                     <p className="text-blue-200/60 max-w-2xl text-lg pl-6 border-l border-blue-500/20">
                         Content will be available here once added from the admin panel.
@@ -42,9 +41,8 @@ export default function SolutionsPageClient({ sections }: SolutionsPageClientPro
             {/* Header */}
             <div className="mb-16 relative">
                 <div className="absolute -left-4 top-0 bottom-0 w-1 bg-blue-500/50"></div>
-                <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tighter mb-4 pl-6">
-                    OUR_STORY
-                    <span className="animate-pulse text-blue-500">_</span>
+                <h1 className="heading-chrome text-4xl md:text-5xl mb-4 pl-6">
+                    OUR STORY
                 </h1>
                 <p className="text-blue-200/60 max-w-2xl text-lg pl-6 border-l border-blue-500/20">
                     The journey of Black Health Intelligence from clinical practice to innovation lab.

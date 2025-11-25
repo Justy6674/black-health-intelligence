@@ -185,3 +185,4 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
     )
 }
 
+
