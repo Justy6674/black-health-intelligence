@@ -25,16 +25,19 @@ export default function Navigation() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
                             </svg>
                         </Link>
-                        <Link href="/" className="hidden sm:inline-flex items-center gap-3 px-3 py-1 rounded-full border border-white/10 hover:border-white/30 transition-colors">
+                        <Link
+                            href="/"
+                            aria-label="Black Health Intelligence home"
+                            className="inline-flex items-center justify-center rounded-full border border-white/20 bg-white/5 p-1 hover:border-white/40 transition-colors"
+                        >
                             <Image
                                 src="/logo-mark.svg"
                                 alt="Black Health Intelligence logo"
-                                width={32}
-                                height={32}
+                                width={56}
+                                height={56}
                                 priority
-                                className="drop-shadow-[0_0_12px_rgba(255,255,255,0.35)]"
+                                className="drop-shadow-[0_0_18px_rgba(255,255,255,0.45)]"
                             />
-                            <span className="text-xs font-semibold tracking-[0.35em] text-white uppercase">BHI</span>
                         </Link>
                     </div>
 
