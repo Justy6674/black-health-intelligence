@@ -23,7 +23,7 @@ export default function PortfolioSection({ id, title, description, projects }: P
                 transition={{ duration: 0.6 }}
                 className="mb-12 text-center"
             >
-                <h2 className="heading-lg mb-4 text-white inline-block">
+                <h2 className="heading-metallic text-4xl md:text-6xl mb-8 inline-block">
                     {title}
                 </h2>
                 <div className="w-24 h-[1px] bg-[var(--electric-blue)] opacity-50 mx-auto mb-6"></div>
