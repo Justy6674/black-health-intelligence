@@ -143,7 +143,7 @@ body {
     @apply text-2xl md:text-3xl font-bold tracking-tight;
   }
   
-  .text-chrome-3d {
+  .text-chrome-v2 {
     @apply font-bold uppercase tracking-tight;
     font-family: var(--font-chakra), system-ui, sans-serif;
     background-image: url('/assets/chrome-texture.svg');
@@ -162,11 +162,11 @@ body {
   }
   
   .heading-metallic {
-    @apply font-bold tracking-tight text-chrome-3d;
+    @apply font-bold tracking-tight text-chrome-v2;
   }
 
   .heading-chrome {
-    @apply font-bold uppercase tracking-tight text-chrome-3d;
+    @apply font-bold uppercase tracking-tight text-chrome-v2;
     font-family: var(--font-chakra), system-ui, sans-serif;
   }
 }
