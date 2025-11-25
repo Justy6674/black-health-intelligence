@@ -1,7 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '@supabase/ssr'
+import { useState } from 'react'
 
 export default function AdminLayout({
     children,
@@ -9,9 +10,16 @@ export default function AdminLayout({
     children: React.ReactNode
 }) {
     const router = useRouter()
-    const supabase = createClient()
+    const [supabase] = useState(() => {
+        if (typeof window === 'undefined') return null
+        return createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
+    })
 
     const handleLogout = async () => {
+        if (!supabase) return
         await supabase.auth.signOut()
         router.push('/admin/login')
         router.refresh()

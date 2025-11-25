@@ -12,15 +12,13 @@ function LoginForm() {
     const [loading, setLoading] = useState(false)
     const router = useRouter()
     
-    // Initialize Supabase client - this is safe in a client component
-    // NEXT_PUBLIC_ env vars are available at build time for client bundles
+    // Initialize Supabase client
     const [supabase] = useState(() => {
-        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-            return null
-        }
+        // Don't create client during SSR/build
+        if (typeof window === 'undefined') return null
         return createBrowserClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         )
     })
 
@@ -39,10 +37,7 @@ function LoginForm() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!supabase) {
-            setError('Supabase not configured')
-            return
-        }
+        if (!supabase) return
 
         setError('')
         setLoading(true)
