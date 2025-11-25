@@ -40,13 +40,25 @@ export default function About() {
                             practice to scalable SaaS platforms that empower healthcare providers worldwide.
                         </p>
 
-                        <div className="mt-8 pt-8 border-t border-silver-700/30">
-                            <h3 className="text-xl font-bold text-white mb-4">Our Mission</h3>
-                            <p className="text-silver-300 leading-relaxed">
-                                To bridge the gap between clinical practice and technology, creating innovative healthcare
-                                solutions that improve patient outcomes, enhance provider efficiency, and make quality
-                                healthcare more accessible to all.
-                            </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10 pt-8 border-t border-silver-700/30">
+                            <div>
+                                <h4 className="text-white font-semibold mb-2">Clinical Expertise</h4>
+                                <p className="text-sm text-silver-400">
+                                    Nurse Practitioner led care with focus on weight management and preventative health.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 className="text-white font-semibold mb-2">Tech Innovation</h4>
+                                <p className="text-sm text-silver-400">
+                                    Full-stack development of SaaS platforms solving healthcare inefficiencies.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 className="text-white font-semibold mb-2">Venture Building</h4>
+                                <p className="text-sm text-silver-400">
+                                    Creating and scaling sustainable healthcare businesses from concept to launch.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>

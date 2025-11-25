@@ -179,7 +179,7 @@ export default function Hero() {
                         transition={{ duration: 0.8, delay: 0.6 }}
                     >
                         <button
-                            className="px-8 py-4 bg-transparent border-2 border-white/30 text-white rounded-lg font-medium text-sm tracking-wider hover:bg-white/10 hover:border-white/50 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]"
+                            className="px-8 py-4 bg-transparent border-2 border-[var(--electric-blue)] text-[var(--electric-blue)] rounded-lg font-medium text-sm tracking-wider hover:bg-[var(--electric-blue)]/10 hover:shadow-[0_0_30px_rgba(14,165,233,0.4)] transition-all duration-300"
                         >
                             LEARN MORE
                         </button>

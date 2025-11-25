@@ -105,6 +105,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the site.
 - 📱 Fully responsive design
 - 🔐 Secure admin authentication
 - 📊 Full CRUD for portfolio projects
+- ↕️ Drag & drop project reordering
 - 🖼️ Logo upload with drag & drop
 - 🚀 Optimized for performance
 - 🔍 SEO-friendly
