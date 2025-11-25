@@ -5,16 +5,17 @@ import { Project } from '@/lib/types'
 import ProjectCard from '@/components/ui/ProjectCard'
 
 interface PortfolioSectionProps {
+    id?: string
     title: string
     description?: string
     projects: Project[]
 }
 
-export default function PortfolioSection({ title, description, projects }: PortfolioSectionProps) {
+export default function PortfolioSection({ id, title, description, projects }: PortfolioSectionProps) {
     if (projects.length === 0) return null
 
     return (
-        <section className="section-container">
+        <section id={id} className="section-container scroll-mt-24">
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}

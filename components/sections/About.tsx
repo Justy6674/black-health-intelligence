@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 
 export default function About() {
     return (
-        <section className="section-container">
+        <section id="about" className="section-container scroll-mt-24">
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}

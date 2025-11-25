@@ -32,6 +32,7 @@ export default async function Home() {
 
             {clinicalProjects.length > 0 && (
                 <PortfolioSection
+                    id="solutions"
                     title="Clinical Practice"
                     description="Direct patient care and clinical services"
                     projects={clinicalProjects}
@@ -40,6 +41,7 @@ export default async function Home() {
 
             {healthSaasProjects.length > 0 && (
                 <PortfolioSection
+                    id="platform"
                     title="Health Technology"
                     description="Innovative SaaS platforms transforming healthcare delivery"
                     projects={healthSaasProjects}
