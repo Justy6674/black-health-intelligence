@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { Project } from '@/lib/types'
+import Navigation from '@/components/Navigation'
 import Hero from '@/components/sections/Hero'
 import PortfolioSection from '@/components/sections/PortfolioSection'
 import About from '@/components/sections/About'
@@ -26,6 +27,7 @@ export default async function Home() {
 
     return (
         <main className="min-h-screen">
+            <Navigation />
             <Hero />
 
             {clinicalProjects.length > 0 && (
