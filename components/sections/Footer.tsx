@@ -2,12 +2,12 @@ export default function Footer() {
     const currentYear = new Date().getFullYear()
 
     return (
-        <footer className="bg-charcoal border-t border-silver-700/30">
+        <footer className="bg-charcoal border-t border-white/10">
             <div className="section-container py-12">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                     {/* Brand */}
                     <div>
-                        <h3 className="text-xl font-bold text-gradient mb-3">
+                        <h3 className="text-xl font-bold text-white mb-3">
                             Black Health Intelligence
                         </h3>
                         <p className="text-silver-400 text-sm">
@@ -22,7 +22,7 @@ export default function Footer() {
                             <p>
                                 <a
                                     href="mailto:contact@blackhealthintelligence.com"
-                                    className="hover:text-metallic transition-colors"
+                                    className="hover:text-[var(--electric-blue)] transition-colors"
                                 >
                                     contact@blackhealthintelligence.com
                                 </a>
@@ -40,7 +40,7 @@ export default function Footer() {
                 </div>
 
                 {/* Copyright */}
-                <div className="pt-8 border-t border-silver-700/30 text-center">
+                <div className="pt-8 border-t border-white/10 text-center">
                     <p className="text-silver-500 text-sm">
                         © {currentYear} Black Health Intelligence PTY LTD. All rights reserved.
                     </p>

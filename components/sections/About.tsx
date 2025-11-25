@@ -14,17 +14,17 @@ export default function About() {
             >
                 {/* Section header */}
                 <div className="text-center mb-12">
-                    <h2 className="heading-lg mb-6 bg-gradient-to-r from-white to-silver-300 bg-clip-text text-transparent inline-block">
+                    <h2 className="heading-lg mb-6 text-white inline-block">
                         About the Founder
                     </h2>
-                    <div className="w-24 h-1 bg-gradient-to-r from-transparent via-metallic to-transparent mx-auto mb-8"></div>
+                    <div className="w-24 h-[1px] bg-[var(--electric-blue)] opacity-50 mx-auto mb-8"></div>
                 </div>
 
                 {/* Content */}
                 <div
-                    className="p-8 rounded-xl border-2 border-silver-700/30 shadow-lg hover:border-silver-500/50 hover:shadow-[0_0_30px_rgba(192,192,192,0.1)] transition-all duration-300"
+                    className="p-8 rounded-xl border border-white/10 shadow-lg hover:border-[var(--electric-blue)]/50 hover:shadow-[0_0_30px_rgba(14,165,233,0.1)] transition-all duration-300"
                     style={{
-                        background: 'linear-gradient(135deg, rgba(26,26,26,0.8) 0%, rgba(15,15,15,0.8) 100%)',
+                        background: 'linear-gradient(135deg, rgba(20,20,20,0.8) 0%, rgba(10,10,10,0.8) 100%)',
                         backdropFilter: 'blur(10px)',
                     }}
                 >

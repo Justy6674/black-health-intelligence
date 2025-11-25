@@ -22,10 +22,10 @@ export default function PortfolioSection({ title, description, projects }: Portf
                 transition={{ duration: 0.6 }}
                 className="mb-12 text-center"
             >
-                <h2 className="heading-lg mb-4 bg-gradient-to-r from-white to-silver-300 bg-clip-text text-transparent inline-block">
+                <h2 className="heading-lg mb-4 text-white inline-block">
                     {title}
                 </h2>
-                <div className="w-24 h-1 bg-gradient-to-r from-transparent via-metallic to-transparent mx-auto mb-6"></div>
+                <div className="w-24 h-[1px] bg-[var(--electric-blue)] opacity-50 mx-auto mb-6"></div>
                 {description && (
                     <p className="text-silver-400 text-lg max-w-3xl mx-auto">
                         {description}
