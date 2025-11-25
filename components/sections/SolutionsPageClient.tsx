@@ -14,7 +14,7 @@ const sectionTitles: Record<string, string> = {
     downscale_history: 'Downscale Business',
     clinical_governance: 'Clinical Governance',
     software_journey: 'Software Development Journey',
-    bec_story: 'Bec\'s Story',
+    bec_story: 'Bec&apos;s Story',
     vision: 'Vision'
 }
 

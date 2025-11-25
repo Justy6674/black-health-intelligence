@@ -50,7 +50,7 @@ export default function ProjectList({ initialProjects }: ProjectListProps) {
             {hasChanges && (
                 <div className="bg-slate-blue/20 border border-slate-blue/50 rounded-lg p-4 flex items-center justify-between">
                     <p className="text-blue-200 text-sm">
-                        Order changed. Don't forget to save.
+                        Order changed. Don&apos;t forget to save.
                     </p>
                     <button
                         onClick={saveOrder}
