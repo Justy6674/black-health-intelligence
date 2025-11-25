@@ -32,6 +32,7 @@ export const OgTemplate = () => (
                 inset: '-20%',
                 background: 'radial-gradient(circle, rgba(109,144,255,0.5) 0%, rgba(5,5,5,0) 65%)',
                 filter: 'blur(40px)',
+                display: 'flex',
             }}
         />
         <div
@@ -41,6 +42,7 @@ export const OgTemplate = () => (
                 background:
                     'linear-gradient(120deg, rgba(150,161,255,0.08) 0%, rgba(109,144,255,0.03) 35%, rgba(5,5,5,0.2) 100%)',
                 mixBlendMode: 'screen',
+                display: 'flex',
             }}
         />
 
@@ -58,6 +60,9 @@ export const OgTemplate = () => (
                     boxShadow: '0 0 120px rgba(109,144,255,0.35)',
                     position: 'relative',
                     overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                 }}
             >
                 <div
@@ -82,7 +87,7 @@ export const OgTemplate = () => (
                         opacity: 0.5,
                     }}
                 />
-                <span style={{ position: 'relative', color: '#050505', display: 'inline-block' }}>B</span>
+                <span style={{ position: 'relative', color: '#050505', display: 'block' }}>B</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <span
@@ -123,7 +128,7 @@ export const OgTemplate = () => (
         </div>
 
         <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ maxWidth: '60%' }}>
+            <div style={{ maxWidth: '60%', display: 'flex' }}>
                 <p
                     style={{
                         fontSize: '30px',
