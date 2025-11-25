@@ -88,14 +88,43 @@ body {
   }
   
   .card {
-    @apply relative bg-[#0f1115]/80 rounded-2xl p-8 border border-white/10 
-           shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md
-           transition-all duration-500 ease-out
-           hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(14,165,233,0.15)]
-           hover:border-sky-500/40 hover:bg-[#13161c]
-           before:absolute before:inset-0 before:rounded-2xl before:p-[1px] 
-           before:bg-gradient-to-b before:from-white/10 before:to-transparent 
-           before:-z-10 before:opacity-50 hover:before:opacity-100;
+    @apply relative rounded-xl bg-charcoal/50 backdrop-blur-sm p-6 transition-all duration-500;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  }
+
+  .card:hover {
+    @apply -translate-y-1 shadow-[0_8px_30px_rgba(14,165,233,0.15)];
+  }
+
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border-radius: inherit;
+    background: linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0.05) 45%,
+      rgba(14, 165, 233, 0.1) 55%,
+      rgba(255, 255, 255, 0.02) 100%
+    );
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    transition: all 0.5s ease;
+  }
+
+  .card:hover::before {
+    background: linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(14, 165, 233, 0.4) 50%,
+      rgba(255, 255, 255, 0.1) 100%
+    );
+    box-shadow: 0 0 15px rgba(14, 165, 233, 0.2);
   }
   
   .heading-xl {
