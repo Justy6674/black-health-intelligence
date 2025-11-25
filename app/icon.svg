@@ -1,33 +1,38 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="iconBg" cx="50%" cy="50%" r="70%">
-      <stop offset="0%" stop-color="#f7f8fa"/>
-      <stop offset="50%" stop-color="#d7d8dc"/>
-      <stop offset="100%" stop-color="#6d727a"/>
+    <linearGradient id="iconChrome" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f4f5f6"/>
+      <stop offset="30%" stop-color="#cfd2d8"/>
+      <stop offset="55%" stop-color="#9ba1ab"/>
+      <stop offset="75%" stop-color="#656b78"/>
+      <stop offset="100%" stop-color="#2c303d"/>
+    </linearGradient>
+    <radialGradient id="iconIridescent" cx="65%" cy="25%" r="80%">
+      <stop offset="0%" stop-color="#ffdbc2" stop-opacity="0.85"/>
+      <stop offset="30%" stop-color="#ffa38f" stop-opacity="0.7"/>
+      <stop offset="55%" stop-color="#cf93d6" stop-opacity="0.6"/>
+      <stop offset="80%" stop-color="#6bb4ff" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#1f3a6c" stop-opacity="0.7"/>
     </radialGradient>
-    <filter id="iconShadow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="18" />
+    <filter id="iconSoftShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="20"/>
     </filter>
-    <mask id="iconCut">
+    <mask id="iconGlitchCuts">
       <rect width="512" height="512" fill="white"/>
-      <rect x="80" y="150" width="352" height="16" fill="black"/>
-      <rect x="80" y="230" width="352" height="12" fill="black"/>
-      <rect x="80" y="300" width="352" height="14" fill="black"/>
-      <rect x="80" y="360" width="352" height="12" fill="black"/>
+      <rect x="90" y="150" width="332" height="16" fill="black"/>
+      <rect x="90" y="232" width="332" height="12" fill="black"/>
+      <rect x="90" y="302" width="332" height="16" fill="black"/>
+      <rect x="90" y="360" width="332" height="14" fill="black"/>
     </mask>
   </defs>
 
-  <rect width="512" height="512" fill="#050505"/>
-  <circle cx="256" cy="256" r="240" fill="url(#iconBg)"/>
-  <circle cx="256" cy="256" r="220" fill="none" stroke="rgba(0,0,0,0.15)" stroke-width="2"/>
-
-  <g filter="url(#iconShadow)" opacity="0.3">
-    <text x="150" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="270" font-weight="900" fill="#050505">B</text>
+  <rect width="512" height="512" fill="none"/>
+  <g filter="url(#iconSoftShadow)" opacity="0.4">
+    <text x="140" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="290" font-weight="900" fill="#000000">B</text>
   </g>
-
-  <g mask="url(#iconCut)">
-    <text x="150" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="270" font-weight="900" fill="#050505">B</text>
-    <text x="160" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="270" font-weight="900" fill="#1a1c22" opacity="0.35">B</text>
+  <g mask="url(#iconGlitchCuts)">
+    <text x="140" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="290" font-weight="900" fill="url(#iconChrome)">B</text>
+    <text x="140" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="290" font-weight="900" fill="url(#iconIridescent)" opacity="0.8">B</text>
   </g>
 </svg>
 

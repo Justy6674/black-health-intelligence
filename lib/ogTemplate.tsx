@@ -49,45 +49,30 @@ export const OgTemplate = () => (
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '28px' }}>
             <div
                 style={{
-                    fontWeight: 900,
-                    fontSize: '220px',
-                    lineHeight: 0.8,
-                    color: '#050505',
-                    backgroundColor: 'rgba(255,255,255,0.9)',
-                    padding: '24px 40px',
-                    borderRadius: '60px',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: '0 0 120px rgba(109,144,255,0.35)',
-                    position: 'relative',
-                    overflow: 'hidden',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    width: '260px',
+                    height: '260px',
+                    position: 'relative',
                 }}
             >
-                <div
+                <span
                     style={{
-                        position: 'absolute',
-                        top: '30%',
-                        left: 0,
-                        width: '100%',
-                        height: '14px',
-                        backgroundColor: '#050505',
-                        opacity: 0.6,
+                        fontWeight: 900,
+                        fontSize: '240px',
+                        lineHeight: 0.9,
+                        backgroundImage:
+                            'linear-gradient(135deg,#f5f6f8 0%,#cfd2d8 35%,#9fa5af 60%,#4b5160 90%), radial-gradient(circle at 70% 30%,rgba(255,219,194,0.9) 0%,rgba(247,168,146,0.7) 30%,rgba(111,180,255,0.6) 70%)',
+                        WebkitBackgroundClip: 'text',
+                        color: 'transparent',
+                        textShadow: '0 0 35px rgba(255,255,255,0.25)',
+                        position: 'relative',
+                        display: 'block',
                     }}
-                />
-                <div
-                    style={{
-                        position: 'absolute',
-                        top: '55%',
-                        left: 0,
-                        width: '100%',
-                        height: '10px',
-                        backgroundColor: '#050505',
-                        opacity: 0.5,
-                    }}
-                />
-                <span style={{ position: 'relative', color: '#050505', display: 'block' }}>B</span>
+                >
+                    B
+                </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <span

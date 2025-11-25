@@ -1,34 +1,39 @@
 <svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="logoBg" cx="50%" cy="50%" r="70%">
-      <stop offset="0%" stop-color="#9cc2ff"/>
-      <stop offset="55%" stop-color="#4674d9"/>
-      <stop offset="100%" stop-color="#0b1b3b"/>
+    <linearGradient id="chrome" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f2f4f5"/>
+      <stop offset="25%" stop-color="#c4c7cc"/>
+      <stop offset="45%" stop-color="#9298a3"/>
+      <stop offset="60%" stop-color="#727883"/>
+      <stop offset="75%" stop-color="#5d6470"/>
+      <stop offset="100%" stop-color="#252833"/>
+    </linearGradient>
+    <radialGradient id="iridescent" cx="70%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#ffe7d1" stop-opacity="0.8"/>
+      <stop offset="35%" stop-color="#f7a892" stop-opacity="0.6"/>
+      <stop offset="55%" stop-color="#d08fd6" stop-opacity="0.5"/>
+      <stop offset="75%" stop-color="#7ec8ff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#2e4f88" stop-opacity="0.65"/>
     </radialGradient>
-    <filter id="logoGlow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="24"/>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18"/>
     </filter>
-    <mask id="logoGlitch">
+    <mask id="glitchCuts">
       <rect width="500" height="500" fill="white"/>
-      <rect x="70" y="130" width="360" height="12" fill="black"/>
-      <rect x="70" y="200" width="360" height="10" fill="black"/>
-      <rect x="70" y="270" width="360" height="14" fill="black"/>
-      <rect x="70" y="330" width="360" height="12" fill="black"/>
+      <rect x="70" y="120" width="360" height="14" fill="black"/>
+      <rect x="70" y="200" width="360" height="12" fill="black"/>
+      <rect x="70" y="265" width="360" height="16" fill="black"/>
+      <rect x="70" y="330" width="360" height="14" fill="black"/>
     </mask>
   </defs>
 
-  <rect width="500" height="500" fill="#050505"/>
-  <circle cx="250" cy="250" r="230" fill="url(#logoBg)" />
-  <circle cx="250" cy="250" r="200" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" />
-
-  <g filter="url(#logoGlow)" opacity="0.5">
-    <text x="120" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="260" font-weight="900" fill="#01030a">B</text>
+  <rect width="500" height="500" fill="none"/>
+  <g filter="url(#softShadow)" opacity="0.35">
+    <text x="116" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="280" font-weight="900" fill="#000000">B</text>
   </g>
-
-  <g mask="url(#logoGlitch)">
-    <text x="120" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="260" font-weight="900" fill="#050505">B</text>
-    <text x="135" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="260" font-weight="900" fill="#0f121c" opacity="0.35">B</text>
-    <text x="110" y="350" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="260" font-weight="900" fill="#0e162e" opacity="0.2">B</text>
+  <g mask="url(#glitchCuts)">
+    <text x="116" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="280" font-weight="900" fill="url(#chrome)">B</text>
+    <text x="116" y="360" font-family="'Arial Black','Space Grotesk',sans-serif" font-size="280" font-weight="900" fill="url(#iridescent)" opacity="0.8">B</text>
   </g>
 </svg>
 
