@@ -19,18 +19,14 @@ export default function Hero() {
                     {/* Main title with SHARP METALLIC GRADIENT */}
                     <motion.h1
                         className="text-6xl md:text-8xl font-bold mb-8 leading-tight tracking-tight"
-                        style={{
-                            textShadow: '0 0 40px rgba(14, 165, 233, 0.15)'
-                        }}
                     >
                         <span 
-                            className="block bg-clip-text text-transparent bg-gradient-to-b from-white via-silver-200 to-silver-500 mb-2 drop-shadow-sm"
+                            className="block text-chrome-3d mb-2"
                         >
                             BLACK HEALTH
                         </span>
                         <span 
-                            className="block bg-clip-text text-transparent bg-gradient-to-b from-white via-[var(--electric-blue)] to-[#003355]"
-                            style={{ filter: 'drop-shadow(0 0 25px rgba(14, 165, 233, 0.4))' }}
+                            className="block text-chrome-3d"
                         >
                             INTELLIGENCE
                         </span>

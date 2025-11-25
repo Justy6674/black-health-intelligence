@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Chakra_Petch } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
     subsets: ["latin"],
     variable: '--font-inter',
+});
+
+const chakraPetch = Chakra_Petch({
+    subsets: ["latin"],
+    weight: ["300", "400", "500", "600", "700"],
+    variable: '--font-chakra',
 });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://blackhealthintelligence.com';
@@ -65,7 +71,7 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="scroll-smooth">
-            <body className={`${inter.variable} antialiased`}>
+            <body className={`${inter.variable} ${chakraPetch.variable} antialiased`}>
                 {children}
             </body>
         </html>
