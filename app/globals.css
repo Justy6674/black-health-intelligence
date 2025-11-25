@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --deep-black: #0a0a0a;
+  --charcoal: #1a1a1a;
+  --metallic: #c0c0c0;
+  --slate-blue: #334155;
+  --warm-brown: #b68a71;
+  --cream: #f7f2d3;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--deep-black);
+  color: #ffffff;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--deep-black);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--slate-blue);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Utility classes */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-metallic-gradient;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-glow-lg hover:-translate-y-1;
+  }
+  
+  .metallic-border {
+    @apply border border-silver-700/30;
+  }
+  
+  .glass-effect {
+    @apply bg-charcoal/80 backdrop-blur-sm;
+  }
+}
+
+/* Component styles */
+@layer components {
+  .btn-primary {
+    @apply px-6 py-3 bg-slate-blue text-white rounded-lg font-medium
+           transition-all duration-300 hover:bg-slate-blue/80 hover:shadow-glow
+           active:scale-95;
+  }
+  
+  .btn-secondary {
+    @apply px-6 py-3 bg-transparent border-2 border-metallic text-metallic rounded-lg font-medium
+           transition-all duration-300 hover:bg-metallic/10 hover:shadow-glow
+           active:scale-95;
+  }
+  
+  .section-container {
+    @apply max-w-7xl mx-auto px-6 py-20;
+  }
+  
+  .card {
+    @apply bg-charcoal rounded-xl p-6 metallic-border shadow-metallic;
+  }
+  
+  .heading-xl {
+    @apply text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight;
+  }
+  
+  .heading-lg {
+    @apply text-4xl md:text-5xl font-bold tracking-tight;
+  }
+  
+  .heading-md {
+    @apply text-3xl md:text-4xl font-bold tracking-tight;
+  }
+  
+  .heading-sm {
+    @apply text-2xl md:text-3xl font-bold tracking-tight;
+  }
+}
+
+/* Animations */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  animation: shimmer 3s infinite linear;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(192, 192, 192, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 1000px 100%;
+}
