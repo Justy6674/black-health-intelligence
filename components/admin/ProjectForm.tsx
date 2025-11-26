@@ -387,7 +387,13 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                     <select
                         id="portfolio_section"
                         required
-                        value={formData.category === 'clinical' ? 'clinical' : `${formData.category}-${formData.subcategory || ''}`}
+                        value={
+                            formData.category === 'clinical' ? 'clinical' :
+                            formData.category === 'other' ? 'other' :
+                            formData.category === 'health-saas' && formData.subcategory === 'non-health-saas' ? 'health-saas-non-health-saas' :
+                            formData.category === 'health-saas' && formData.subcategory === 'health-saas' ? 'health-saas-health-saas' :
+                            'health-saas-health-saas' // default fallback for health-saas without subcategory
+                        }
                         onChange={(e) => {
                             const val = e.target.value
                             if (val === 'clinical') {

@@ -1,6 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import Link from 'next/link'
 
 export default function About() {
     return (
@@ -15,7 +16,7 @@ export default function About() {
                 {/* Section header */}
                 <div className="text-center mb-12">
                     <h2 className="heading-chrome text-4xl md:text-6xl mb-10 inline-block">
-                        About the Founder
+                        What We Do And Why
                     </h2>
                     <div className="w-24 h-[1px] bg-[var(--electric-blue)] opacity-50 mx-auto mb-8"></div>
                 </div>
@@ -29,36 +30,53 @@ export default function About() {
                     }}
                 >
                     <div className="prose prose-invert max-w-none">
-                        <p className="text-lg text-silver-300 leading-relaxed mb-6">
-                            Black Health Intelligence is a healthcare innovation portfolio founded by a Nurse Practitioner
-                            with a passion for transforming healthcare delivery through technology and clinical excellence.
-                        </p>
-
-                        <p className="text-lg text-silver-300 leading-relaxed mb-6">
-                            With a unique blend of clinical expertise and technological innovation, we build solutions
-                            that address real-world healthcare challenges—from direct patient care through our clinical
-                            practice to scalable SaaS platforms that empower healthcare providers worldwide.
-                        </p>
+                        <div className="space-y-4 mb-8">
+                            <p className="text-xl text-white leading-relaxed">
+                                <span className="text-[var(--electric-blue)] font-semibold">We care for patients</span> — because we're nurses first.
+                            </p>
+                            <p className="text-xl text-white leading-relaxed">
+                                <span className="text-[var(--electric-blue)] font-semibold">We fix problems</span> — because we refuse to tolerate broken systems.
+                            </p>
+                            <p className="text-xl text-white leading-relaxed">
+                                <span className="text-[var(--electric-blue)] font-semibold">We innovate</span> — because good ideas deserve to exist.
+                            </p>
+                            <p className="text-xl text-silver-300 leading-relaxed italic">
+                                Then we do it all again.
+                            </p>
+                        </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10 pt-8 border-t border-silver-700/30">
                             <div>
-                                <h4 className="text-white font-semibold mb-2">Clinical Expertise</h4>
+                                <h4 className="text-white font-semibold mb-2">Patient Care</h4>
                                 <p className="text-sm text-silver-400">
-                                    Nurse Practitioner led care with focus on weight management and preventative health.
+                                    Nurse-led clinical practice delivering real healthcare — not corporate medicine.
                                 </p>
                             </div>
                             <div>
-                                <h4 className="text-white font-semibold mb-2">Tech Innovation</h4>
+                                <h4 className="text-white font-semibold mb-2">Problem Solving</h4>
                                 <p className="text-sm text-silver-400">
-                                    Full-stack development of SaaS platforms solving healthcare inefficiencies.
+                                    Building SaaS tools that fix what's broken in healthcare systems.
                                 </p>
                             </div>
                             <div>
-                                <h4 className="text-white font-semibold mb-2">Venture Building</h4>
+                                <h4 className="text-white font-semibold mb-2">Innovation</h4>
                                 <p className="text-sm text-silver-400">
-                                    Creating and scaling sustainable healthcare businesses from concept to launch.
+                                    Creating solutions across health and beyond — because good ideas don't wait.
                                 </p>
                             </div>
+                        </div>
+
+                        {/* CTA */}
+                        <div className="mt-10 pt-6 border-t border-silver-700/30 text-center">
+                            <Link 
+                                href="/platform"
+                                className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--electric-blue)]/20 text-[var(--electric-blue)] border border-[var(--electric-blue)]/50 rounded-lg font-semibold hover:bg-[var(--electric-blue)]/30 hover:border-[var(--electric-blue)] transition-all duration-300"
+                            >
+                                Explore Our Portfolio
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                </svg>
+                            </Link>
                         </div>
                     </div>
                 </div>
