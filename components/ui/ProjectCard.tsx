@@ -1,13 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Image from 'next/image'
-import { Project } from '@/lib/types'
+import { Project, HighlightBadge, HighlightEffect } from '@/lib/types'
+import EnquiryModal from '@/components/modals/EnquiryModal'
 
 interface ProjectCardProps {
     project: Project
     index: number
     variant?: 'standard' | 'industrial' | 'artistic'
+    onContactClick?: (e: React.MouseEvent) => void
 }
 
 const statusColors = {
@@ -24,12 +27,37 @@ const statusLabels = {
     archived: 'Archived',
 }
 
+// Badge colours
+const getBadgeColor = (badge: HighlightBadge) => {
+    switch (badge) {
+        case 'For Sale': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+        case 'Seeking Partners': return 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+        case 'Hiring': return 'bg-green-500/20 text-green-300 border-green-500/40'
+        case 'Revenue Raising': return 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+        case 'New': return 'bg-pink-500/20 text-pink-300 border-pink-500/40'
+        case 'Featured': return 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+        case 'Coming Soon': return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+        default: return 'bg-gray-500/20 text-gray-300 border-gray-500/40'
+    }
+}
+
+// Effect classes
+const getEffectClass = (effect: HighlightEffect) => {
+    switch (effect) {
+        case 'glow': return 'shadow-[0_0_15px_currentColor]'
+        case 'pulse': return 'animate-pulse'
+        default: return ''
+    }
+}
+
 // Strip HTML tags for plain text display
 const stripHtml = (html: string) => {
     return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
 }
 
 export default function ProjectCard({ project, index, variant = 'standard' }: ProjectCardProps) {
+    const [enquiryOpen, setEnquiryOpen] = useState(false)
+    
     // Styles based on variant
     const containerStyles = {
         standard: "rounded-none border border-white/10 bg-white/5 backdrop-blur-md hover:border-[var(--electric-blue)]/40 hover:shadow-[0_0_40px_rgba(14,165,233,0.15)]",
@@ -37,7 +65,16 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
         artistic: "rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl hover:border-white/20 hover:shadow-[0_10px_40px_rgba(0,0,0,0.5)] hover:-translate-y-2"
     }
 
+    const handleContactClick = (e: React.MouseEvent) => {
+        e.stopPropagation() // Prevent card click
+        setEnquiryOpen(true)
+    }
+
+    const highlightBadges = project.highlight_badges || []
+    const highlightEffect = project.highlight_effect || 'none'
+
     return (
+        <>
         <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -89,20 +126,61 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                     </div>
                 )}
 
-                {/* Status & For Sale Badge */}
-                <div className="mb-4 flex flex-wrap items-center gap-2">
+                {/* Status Badge */}
+                <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className={`inline-flex items-center px-3 py-1 text-[10px] font-bold tracking-widest uppercase border ${statusColors[project.status]}`}>
                         {statusLabels[project.status]}
                     </span>
-                    {project.for_sale && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest uppercase border border-yellow-500/40 bg-yellow-500/10 text-yellow-400">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                            </svg>
-                            For Sale
-                        </span>
-                    )}
                 </div>
+
+                {/* Highlight Badges */}
+                {highlightBadges.length > 0 && (
+                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                        {highlightBadges.map((badge) => (
+                            <span 
+                                key={badge}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest uppercase border rounded-full ${getBadgeColor(badge)} ${getEffectClass(highlightEffect)}`}
+                            >
+                                {badge === 'For Sale' && (
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {badge === 'Hiring' && (
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                                    </svg>
+                                )}
+                                {badge === 'Seeking Partners' && (
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                                    </svg>
+                                )}
+                                {badge === 'Revenue Raising' && (
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {badge === 'New' && (
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {badge === 'Featured' && (
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                )}
+                                {badge === 'Coming Soon' && (
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {badge}
+                            </span>
+                        ))}
+                    </div>
+                )}
 
                 {/* Project name */}
                 <h3 className={`text-2xl font-bold mb-4 text-white transition-colors
@@ -139,21 +217,42 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                     </div>
                 )}
 
-                {/* Click to View Details Indicator */}
+                {/* Click to View Details Indicator & Contact Button */}
                 <div className="mt-auto pt-4 border-t border-white/10 flex items-center justify-between">
                     <span className="text-xs text-silver-500 group-hover:text-silver-300 transition-colors">
                         Click for details
                     </span>
-                    <svg 
-                        className="w-4 h-4 text-silver-500 group-hover:text-white group-hover:translate-x-1 transition-all" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                    >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
+                    <div className="flex items-center gap-3">
+                        {project.show_contact_button && (
+                            <button
+                                onClick={handleContactClick}
+                                className="p-2 rounded-full bg-white/5 border border-white/10 text-silver-400 hover:text-white hover:bg-white/10 hover:border-white/30 transition-all"
+                                title="Contact / Enquire"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                            </button>
+                        )}
+                        <svg 
+                            className="w-4 h-4 text-silver-500 group-hover:text-white group-hover:translate-x-1 transition-all" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </div>
                 </div>
             </div>
+
+            {/* Enquiry Modal */}
+            <EnquiryModal
+                open={enquiryOpen}
+                onClose={() => setEnquiryOpen(false)}
+                projectName={project.name}
+            />
         </motion.div>
+        </>
     )
 }

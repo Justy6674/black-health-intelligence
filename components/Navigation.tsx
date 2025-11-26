@@ -64,6 +64,12 @@ export default function Navigation() {
                             About
                         </Link>
                         <Link 
+                            href="/faq" 
+                            className={`text-xs font-medium tracking-[0.2em] uppercase transition-all hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] ${isActive('/faq') ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]' : 'text-silver-400'}`}
+                        >
+                            FAQ
+                        </Link>
+                        <Link 
                             href="/#contact" 
                             className="text-silver-400 hover:text-white transition-colors text-xs font-medium tracking-[0.2em] uppercase hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
                         >

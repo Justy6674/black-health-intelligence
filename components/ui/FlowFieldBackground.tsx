@@ -41,8 +41,8 @@ export default function FlowFieldBackground() {
         }
 
         const draw = () => {
-            // Fade effect
-            ctx.fillStyle = 'rgba(5, 5, 5, 0.05)'
+            // Fade effect - slower fade for more visible trails
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.02)'
             ctx.fillRect(0, 0, canvas.width, canvas.height)
 
             for (let i = 0; i < particles.length; i++) {
@@ -66,12 +66,12 @@ export default function FlowFieldBackground() {
                 if (p.y < 0) p.y = canvas.height
                 if (p.y > canvas.height) p.y = 0
 
-                // Draw
-                ctx.strokeStyle = `hsla(${p.hue}, 70%, 50%, 0.5)`
-                ctx.lineWidth = 1
+                // Draw - brighter particles
+                ctx.strokeStyle = `hsla(${p.hue}, 80%, 60%, 0.8)`
+                ctx.lineWidth = 1.5
                 ctx.beginPath()
                 ctx.moveTo(p.x, p.y)
-                ctx.lineTo(p.x - p.vx * 2, p.y - p.vy * 2)
+                ctx.lineTo(p.x - p.vx * 3, p.y - p.vy * 3)
                 ctx.stroke()
             }
 
@@ -93,7 +93,8 @@ export default function FlowFieldBackground() {
     return (
         <canvas
             ref={canvasRef}
-            className="absolute inset-0 pointer-events-none z-0 bg-[#050505]"
+            className="fixed inset-0 pointer-events-none bg-[#050505]"
+            style={{ zIndex: 0 }}
         />
     )
 }

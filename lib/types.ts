@@ -1,3 +1,6 @@
+export type HighlightBadge = 'For Sale' | 'Seeking Partners' | 'Hiring' | 'Revenue Raising' | 'New' | 'Featured' | 'Coming Soon'
+export type HighlightEffect = 'none' | 'glow' | 'pulse'
+
 export interface Project {
     id: string
     name: string
@@ -21,6 +24,10 @@ export interface Project {
     sale_price?: number
     investment_opportunity?: boolean
     development_phase?: 'concept' | 'mvp' | 'beta' | 'production' | 'early-stage' | 'growth' | 'scaling' | 'established'
+    // Highlight badges system
+    highlight_badges?: HighlightBadge[]
+    highlight_effect?: HighlightEffect
+    show_contact_button?: boolean
     created_at: string
     updated_at: string
 }
