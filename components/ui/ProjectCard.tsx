@@ -84,11 +84,19 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                     </div>
                 )}
 
-                {/* Status */}
-                <div className="mb-4">
+                {/* Status & For Sale Badge */}
+                <div className="mb-4 flex flex-wrap items-center gap-2">
                     <span className={`inline-flex items-center px-3 py-1 text-[10px] font-bold tracking-widest uppercase border ${statusColors[project.status]}`}>
                         {statusLabels[project.status]}
                     </span>
+                    {project.for_sale && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest uppercase border border-yellow-500/40 bg-yellow-500/10 text-yellow-400">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                            </svg>
+                            For Sale
+                        </span>
+                    )}
                 </div>
 
                 {/* Project name */}
@@ -109,7 +117,7 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
 
                 {/* Action Button */}
                 {project.website_url && (
-                    <div className="mt-auto">
+                    <div className="mt-auto mb-4">
                         <div className={`inline-flex items-center gap-3 text-xs font-bold tracking-[0.2em] uppercase transition-colors group/link
                             ${variant === 'industrial' ? 'text-blue-400 hover:text-white' : 'text-white hover:text-[var(--electric-blue)]'}
                         `}>
@@ -125,6 +133,21 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                         </div>
                     </div>
                 )}
+
+                {/* Click to View Details Indicator */}
+                <div className="mt-auto pt-4 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-xs text-silver-500 group-hover:text-silver-300 transition-colors">
+                        Click for details
+                    </span>
+                    <svg 
+                        className="w-4 h-4 text-silver-500 group-hover:text-white group-hover:translate-x-1 transition-all" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </div>
             </div>
         </motion.div>
     )

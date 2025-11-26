@@ -1,9 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import { Project } from '@/lib/types'
 import { X } from 'lucide-react'
+import EnquiryModal from '@/components/modals/EnquiryModal'
 
 interface ProjectDetailModalProps {
     project: Project | null
@@ -12,6 +14,8 @@ interface ProjectDetailModalProps {
 }
 
 export default function ProjectDetailModal({ project, isOpen, onClose }: ProjectDetailModalProps) {
+    const [enquiryOpen, setEnquiryOpen] = useState(false)
+    
     if (!project) return null
 
     return (
@@ -168,17 +172,35 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                         Visit Website
                                     </a>
                                 )}
-                                {(project.for_sale || project.investment_opportunity) && (
-                                    <a
-                                        href={`mailto:contact@blackhealthintelligence.com?subject=Inquiry about ${project.name}`}
+                                {project.for_sale && (
+                                    <button
+                                        onClick={() => setEnquiryOpen(true)}
+                                        className="px-6 py-3 bg-yellow-500 text-black rounded-lg font-semibold hover:bg-yellow-400 transition-colors inline-flex items-center gap-2"
+                                    >
+                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                        </svg>
+                                        Enquire About Purchase
+                                    </button>
+                                )}
+                                {project.investment_opportunity && !project.for_sale && (
+                                    <button
+                                        onClick={() => setEnquiryOpen(true)}
                                         className="px-6 py-3 bg-white/10 border border-white/20 text-white rounded-lg font-medium hover:bg-white/20 transition-colors"
                                     >
-                                        {project.for_sale ? 'Inquire About Purchase' : 'Discuss Investment'}
-                                    </a>
+                                        Discuss Investment
+                                    </button>
                                 )}
                             </div>
                         </div>
                     </motion.div>
+
+                    {/* Enquiry Modal */}
+                    <EnquiryModal
+                        open={enquiryOpen}
+                        onClose={() => setEnquiryOpen(false)}
+                        projectName={project.name}
+                    />
                 </>
             )}
         </AnimatePresence>
