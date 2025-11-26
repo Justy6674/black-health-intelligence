@@ -128,7 +128,8 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         category: initialData?.category || 'health-saas' as ProjectCategory,
-        subcategory: initialData?.subcategory || undefined,
+        // Default subcategory to 'health-saas' when category is health-saas and no subcategory provided
+        subcategory: initialData?.subcategory || (initialData?.category === 'health-saas' || !initialData?.category ? 'health-saas' as ProjectSubcategory : undefined),
         short_description: initialData?.short_description || '',
         long_description: initialData?.long_description || '',
         logo_url: initialData?.logo_url || '',
