@@ -1,34 +1,24 @@
-import { createClient } from '@/lib/supabase/server'
 import Navigation from '@/components/Navigation'
-import TechGridBackground from '@/components/ui/TechGridBackground'
-import SolutionsPageClient from '@/components/sections/SolutionsPageClient'
+import PacManBackgroundWrapper from '@/components/ui/PacManBackgroundWrapper'
+import AboutPageClient from '@/components/sections/AboutPageClient'
 import Footer from '@/components/sections/Footer'
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
     title: 'About | Black Health Intelligence',
-    description: 'Learn about Black Health Intelligence - a healthcare innovation portfolio founded by a Nurse Practitioner with a passion for transforming healthcare delivery.',
+    description: 'Learn about Justin Black, Nurse Practitioner & Health-Tech Founder, and the team behind Black Health Intelligence - a healthcare innovation portfolio transforming healthcare delivery.',
 }
 
-export const revalidate = 0
+// Cache for 1 hour since content is static
+export const revalidate = 3600
 
-export default async function AboutPage() {
-    const supabase = await createClient()
-
-    // Fetch all solutions content
-    const { data: content } = await supabase
-        .from('solutions_content')
-        .select('*')
-        .order('display_order', { ascending: true })
-
-    const sections = content || []
-
+export default function AboutPage() {
     return (
-        <main className="min-h-screen bg-black relative overflow-hidden font-mono">
+        <main className="min-h-screen bg-black relative overflow-hidden">
             <Navigation />
-            <TechGridBackground />
+            <PacManBackgroundWrapper />
             
-            <SolutionsPageClient sections={sections} />
+            <AboutPageClient />
             
             <Footer />
         </main>
