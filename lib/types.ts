@@ -20,7 +20,7 @@ export interface Project {
     for_sale?: boolean
     sale_price?: number
     investment_opportunity?: boolean
-    development_phase?: 'concept' | 'mvp' | 'beta' | 'production'
+    development_phase?: 'concept' | 'mvp' | 'beta' | 'production' | 'early-stage' | 'growth' | 'scaling' | 'established'
     created_at: string
     updated_at: string
 }

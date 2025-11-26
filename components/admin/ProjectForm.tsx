@@ -433,10 +433,18 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                         className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
                     >
                         <option value="">Select phase</option>
-                        <option value="concept">Concept</option>
-                        <option value="mvp">MVP</option>
-                        <option value="beta">Beta</option>
-                        <option value="production">Production</option>
+                        <optgroup label="Software / SaaS">
+                            <option value="concept">Concept</option>
+                            <option value="mvp">MVP</option>
+                            <option value="beta">Beta</option>
+                            <option value="production">Production</option>
+                        </optgroup>
+                        <optgroup label="Clinical / Business">
+                            <option value="early-stage">Early Stage (0-12 months)</option>
+                            <option value="growth">Growth (Exploring expansion)</option>
+                            <option value="scaling">Scaling (Adding team/contractors)</option>
+                            <option value="established">Established</option>
+                        </optgroup>
                     </select>
                 </div>
 

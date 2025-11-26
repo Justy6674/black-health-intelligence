@@ -97,7 +97,16 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-6">
                                         <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Development Phase</h3>
                                         <span className="inline-block px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded text-sm font-medium uppercase">
-                                            {project.development_phase}
+                                            {{
+                                                'concept': 'Concept',
+                                                'mvp': 'MVP',
+                                                'beta': 'Beta',
+                                                'production': 'Production',
+                                                'early-stage': 'Early Stage (0-12 months)',
+                                                'growth': 'Growth Phase',
+                                                'scaling': 'Scaling',
+                                                'established': 'Established'
+                                            }[project.development_phase] || project.development_phase}
                                         </span>
                                     </div>
                                 )}
