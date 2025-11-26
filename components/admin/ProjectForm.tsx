@@ -478,19 +478,31 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                     </select>
                 </div>
 
-                {/* Display order */}
+                {/* Display order - made clearer */}
                 <div className="mb-4">
                     <label htmlFor="display_order" className="block text-sm font-medium text-silver-300 mb-2">
-                        Display Order (lower numbers appear first)
+                        Position in List
                     </label>
-                    <input
+                    <select
                         id="display_order"
-                        type="number"
                         value={formData.display_order}
                         onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
-                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                        placeholder="0"
-                    />
+                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
+                    >
+                        <option value={1}>1st - Show First</option>
+                        <option value={2}>2nd</option>
+                        <option value={3}>3rd</option>
+                        <option value={4}>4th</option>
+                        <option value={5}>5th</option>
+                        <option value={6}>6th</option>
+                        <option value={7}>7th</option>
+                        <option value={8}>8th</option>
+                        <option value={9}>9th</option>
+                        <option value={10}>10th - Show Last</option>
+                    </select>
+                    <p className="text-xs text-silver-500 mt-1">
+                        Projects are grouped by category. This sets the order within: {formData.category === 'clinical' ? 'Clinical Site' : formData.subcategory === 'health-saas' ? 'Health-Related SaaS' : formData.subcategory === 'non-health-saas' ? 'Non-Health SaaS' : 'your selected category'}
+                    </p>
                 </div>
 
                 {/* Featured toggle */}
