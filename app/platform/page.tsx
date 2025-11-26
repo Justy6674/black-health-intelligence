@@ -1,16 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { Project, Tag } from '@/lib/types'
 import Navigation from '@/components/Navigation'
-import dynamic from 'next/dynamic'
 import PlatformPageClient from '@/components/sections/PlatformPageClient'
 import Footer from '@/components/sections/Footer'
 import { Metadata } from 'next'
-
-// Lazy load the background animation so it doesn't block initial render
-const FlowFieldBackground = dynamic(
-    () => import('@/components/ui/FlowFieldBackground'),
-    { ssr: false }
-)
+import FlowFieldBackgroundWrapper from '@/components/ui/FlowFieldBackgroundWrapper'
 
 export const metadata: Metadata = {
     title: 'Portfolio | Black Health Intelligence',
@@ -88,7 +82,7 @@ export default async function PortfolioPage() {
     return (
         <main className="min-h-screen bg-deep-black relative overflow-hidden">
             <Navigation />
-            <FlowFieldBackground />
+            <FlowFieldBackgroundWrapper />
             
             <PlatformPageClient 
                 clinicalProject={clinicalProject}
