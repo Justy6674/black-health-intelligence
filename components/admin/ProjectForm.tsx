@@ -161,6 +161,7 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
     const [logoPreview, setLogoPreview] = useState<string>(initialData?.logo_url || '')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const [categoryProjects, setCategoryProjects] = useState<{name: string, display_order: number}[]>([])
 
     // Load existing tags for edit mode
     useEffect(() => {
@@ -179,6 +180,45 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
             loadTags()
         }
     }, [mode, initialData?.id, supabase])
+
+    // Load projects in same category to show current order
+    useEffect(() => {
+        if (!supabase) return
+        
+        const loadCategoryProjects = async () => {
+            let query = supabase
+                .from('projects')
+                .select('id, name, display_order, category, subcategory')
+                .neq('status', 'archived')
+                .order('display_order', { ascending: true })
+            
+            // Filter by current category/subcategory
+            if (formData.category === 'clinical') {
+                query = query.eq('category', 'clinical')
+            } else if (formData.category === 'health-saas') {
+                query = query.eq('category', 'health-saas')
+                if (formData.subcategory === 'non-health-saas') {
+                    query = query.eq('subcategory', 'non-health-saas')
+                } else {
+                    // health-saas or no subcategory
+                    query = query.or('subcategory.eq.health-saas,subcategory.is.null')
+                }
+            } else if (formData.category === 'partner-solutions') {
+                query = query.eq('category', 'partner-solutions')
+            }
+            
+            const { data } = await query
+            if (data) {
+                // Exclude current project if editing
+                const filtered = initialData?.id 
+                    ? data.filter((p: any) => p.id !== initialData.id)
+                    : data
+                setCategoryProjects(filtered.map((p: any) => ({ name: p.name, display_order: p.display_order })))
+            }
+        }
+        
+        loadCategoryProjects()
+    }, [supabase, formData.category, formData.subcategory, initialData?.id])
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const file = acceptedFiles[0]
@@ -502,7 +542,7 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                     </select>
                 </div>
 
-                {/* Display order - made clearer */}
+                {/* Display order - shows what's currently in each position */}
                 <div className="mb-4">
                     <label htmlFor="display_order" className="block text-sm font-medium text-silver-300 mb-2">
                         Position in List
@@ -513,20 +553,24 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                         onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
                         className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
                     >
-                        <option value={1}>1st - Show First</option>
-                        <option value={2}>2nd</option>
-                        <option value={3}>3rd</option>
-                        <option value={4}>4th</option>
-                        <option value={5}>5th</option>
-                        <option value={6}>6th</option>
-                        <option value={7}>7th</option>
-                        <option value={8}>8th</option>
-                        <option value={9}>9th</option>
-                        <option value={10}>10th - Show Last</option>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(pos => {
+                            const projectAtPos = categoryProjects.find(p => p.display_order === pos)
+                            const suffix = pos === 1 ? 'st' : pos === 2 ? 'nd' : pos === 3 ? 'rd' : 'th'
+                            return (
+                                <option key={pos} value={pos}>
+                                    {pos}{suffix}{projectAtPos ? ` (${projectAtPos.name})` : pos === 1 ? ' - Show First' : ''}
+                                </option>
+                            )
+                        })}
                     </select>
                     <p className="text-xs text-silver-500 mt-1">
-                        Projects are grouped by category. This sets the order within: {formData.category === 'clinical' ? 'Clinical Site' : formData.subcategory === 'health-saas' ? 'Health-Related SaaS' : formData.subcategory === 'non-health-saas' ? 'Non-Health SaaS' : 'your selected category'}
+                        Projects are grouped by category. This sets the order within: {formData.category === 'clinical' ? 'Direct Clinical Care' : formData.subcategory === 'health-saas' || !formData.subcategory ? 'Health-Related SaaS' : formData.subcategory === 'non-health-saas' ? 'Non-Health SaaS' : 'your selected category'}
                     </p>
+                    {categoryProjects.length > 0 && (
+                        <p className="text-xs text-silver-400 mt-2">
+                            Current order: {categoryProjects.sort((a, b) => a.display_order - b.display_order).map((p, i) => `${i + 1}. ${p.name}`).join(' → ')}
+                        </p>
+                    )}
                 </div>
 
                 {/* Featured toggle */}
