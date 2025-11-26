@@ -72,7 +72,10 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                 {project.problem_solves && (
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-6">
                                         <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Problem It Solves</h3>
-                                        <p className="text-white/90 leading-relaxed">{project.problem_solves}</p>
+                                        <div 
+                                            className="text-white/90 leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                            dangerouslySetInnerHTML={{ __html: project.problem_solves }}
+                                        />
                                     </div>
                                 )}
 
@@ -80,7 +83,10 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                 {project.target_audience && (
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-6">
                                         <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Target Audience</h3>
-                                        <p className="text-white/90 leading-relaxed">{project.target_audience}</p>
+                                        <div 
+                                            className="text-white/90 leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                            dangerouslySetInnerHTML={{ __html: project.target_audience }}
+                                        />
                                     </div>
                                 )}
 
@@ -88,7 +94,10 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                 {project.build_details && (
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-6">
                                         <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Build Details</h3>
-                                        <p className="text-white/90 leading-relaxed font-mono text-sm">{project.build_details}</p>
+                                        <div 
+                                            className="text-white/90 leading-relaxed font-mono text-sm prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                            dangerouslySetInnerHTML={{ __html: project.build_details }}
+                                        />
                                     </div>
                                 )}
 
@@ -123,7 +132,10 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                 {project.revenue_stream && (
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-6">
                                         <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Revenue Stream</h3>
-                                        <p className="text-white/90 leading-relaxed">{project.revenue_stream}</p>
+                                        <div 
+                                            className="text-white/90 leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                            dangerouslySetInnerHTML={{ __html: project.revenue_stream }}
+                                        />
                                     </div>
                                 )}
 
@@ -163,9 +175,10 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                             {project.long_description && (
                                 <div className="mb-8">
                                     <h3 className="text-xl font-bold text-white mb-4">Overview</h3>
-                                    <div className="prose prose-invert max-w-none text-white/80 leading-relaxed">
-                                        <p>{project.long_description}</p>
-                                    </div>
+                                    <div 
+                                        className="prose prose-invert max-w-none text-white/80 leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-2 [&_strong]:text-white"
+                                        dangerouslySetInnerHTML={{ __html: project.long_description }}
+                                    />
                                 </div>
                             )}
 

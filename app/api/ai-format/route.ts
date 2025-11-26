@@ -13,60 +13,80 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 })
         }
 
-        // Different prompts based on field type - ALL USE AUSTRALIAN ENGLISH, NO MARKDOWN
-        const baseInstruction = `IMPORTANT: 
-1. Use Australian English spelling (e.g., colour, organisation, centre, behaviour, realise, programme). This is for an Australian business.
-2. DO NOT use any markdown formatting - no asterisks (*), no bold (**), no headers (#), no bullet points. Return plain text only.
-3. Do not wrap text in quotes.`
+        // Different prompts based on field type - ALL USE AUSTRALIAN ENGLISH WITH HTML FORMATTING
+        const baseInstruction = `CRITICAL REQUIREMENTS:
+1. AUSTRALIAN ENGLISH ONLY - Convert ALL American spellings to Australian:
+   - color → colour, organization → organisation, center → centre
+   - behavior → behaviour, realize → realise, program → programme (except computer programs)
+   - personalized → personalised, specialized → specialised, optimize → optimise
+   - defense → defence, license → licence (noun), practice → practise (verb)
+2. Use simple HTML for formatting where appropriate:
+   - Use <strong> for emphasis (NOT asterisks)
+   - Use <br><br> for paragraph breaks
+   - Use <ul><li> for bullet lists when listing items
+3. Do NOT use markdown (* or ** or # or -)
+4. Do NOT wrap text in quotes`
 
         const prompts: Record<string, string> = {
             short_description: `You are a professional copywriter. ${baseInstruction}
 
-Clean up and format this project description for a portfolio card. Make it compelling, professional, and concise (2-3 sentences max). Fix any grammar or spelling issues. Keep the core message but make it polished:
+Clean up and format this project description for a portfolio card. Make it compelling, professional, and concise (2-3 sentences max). Fix any grammar or spelling issues. Keep the core message but make it polished. NO bullet points for short descriptions - just clean prose:
 
 "${text}"
 
-Return ONLY the improved text, nothing else.`,
+Return ONLY the improved text with Australian spelling, nothing else.`,
 
             long_description: `You are a professional copywriter. ${baseInstruction}
 
-Clean up and format this detailed project description. Make it professional, well-structured, and compelling. Fix grammar, improve clarity, and organize into clear paragraphs if needed. Keep all important details:
+Clean up and format this detailed project description. Make it professional, well-structured, and compelling. Fix grammar, improve clarity. Use HTML formatting:
+- Use <strong> for key terms or headings within the text
+- Use <br><br> between paragraphs
+- Use <ul><li> for lists if there are multiple items to list
+Keep all important details:
 
 "${text}"
 
-Return ONLY the improved text, nothing else.`,
+Return ONLY the improved HTML-formatted text with Australian spelling, nothing else.`,
 
             problem_solves: `You are a professional copywriter. ${baseInstruction}
 
-Clean up and format this problem statement for a project. Make it clear, compelling, and professional. Explain the problem in a way that resonates with the target audience:
+Clean up and format this problem statement for a project. Make it clear, compelling, and professional. Use HTML formatting where it helps readability:
+- Use <strong> for key problem areas
+- Use <br><br> between paragraphs
+- Use <ul><li> if listing multiple problems
 
 "${text}"
 
-Return ONLY the improved text, nothing else.`,
+Return ONLY the improved HTML-formatted text with Australian spelling, nothing else.`,
 
             target_audience: `You are a professional copywriter. ${baseInstruction}
 
-Clean up and format this target audience description. Make it clear and specific. Use professional language:
+Clean up and format this target audience description. Make it clear and specific. Use HTML formatting:
+- Use <ul><li> to list different audience segments if there are multiple
+- Use <strong> for key audience types
 
 "${text}"
 
-Return ONLY the improved text, nothing else.`,
+Return ONLY the improved HTML-formatted text with Australian spelling, nothing else.`,
 
             build_details: `You are a technical writer. ${baseInstruction}
 
-Clean up and format this tech stack / build details description. Make it clear, organized, and professional. List technologies clearly:
+Clean up and format this tech stack / build details description. Make it clear, organized, and professional. Use HTML formatting:
+- Use <ul><li> to list technologies
+- Group related technologies together
+- Use <strong> for category headings like "Frontend:", "Backend:", etc.
 
 "${text}"
 
-Return ONLY the improved text, nothing else.`,
+Return ONLY the improved HTML-formatted text with Australian spelling, nothing else.`,
 
             default: `You are a professional copywriter. ${baseInstruction}
 
-Clean up and format this text. Fix grammar, improve clarity, and make it professional:
+Clean up and format this text. Fix grammar, improve clarity, and make it professional. Use appropriate HTML formatting (<strong>, <br>, <ul><li>) where it improves readability:
 
 "${text}"
 
-Return ONLY the improved text, nothing else.`
+Return ONLY the improved HTML-formatted text with Australian spelling, nothing else.`
         }
 
         const prompt = prompts[field] || prompts.default
