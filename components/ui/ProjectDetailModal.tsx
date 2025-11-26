@@ -148,10 +148,34 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                 </div>
                             )}
 
-                            {/* Details Grid - Smaller boxes */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                                {/* Target Audience */}
-                                {project.target_audience && (
+                            {/* Quick Info Row - Compact inline items for simple data */}
+                            {(project.estimated_release || project.revenue_stream || project.market_scope) && (
+                                <div className="mb-6 flex flex-wrap gap-3">
+                                    {project.estimated_release && (
+                                        <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-sm">
+                                            <span className="text-white/50">Release:</span>
+                                            <span className="text-white font-medium">{new Date(project.estimated_release).toLocaleDateString('en-AU', { year: 'numeric', month: 'long' })}</span>
+                                        </span>
+                                    )}
+                                    {project.revenue_stream && project.revenue_stream.length < 50 && (
+                                        <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-sm">
+                                            <span className="text-white/50">Revenue:</span>
+                                            <span className="text-white font-medium" dangerouslySetInnerHTML={{ __html: project.revenue_stream }} />
+                                        </span>
+                                    )}
+                                    {project.market_scope && (
+                                        <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-sm">
+                                            <span className="text-white/50">Market:</span>
+                                            <span className="text-white font-medium">{project.market_scope}</span>
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Detailed Content Sections - Only show if there's substantial content */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                                {/* Target Audience - only if has content */}
+                                {project.target_audience && project.target_audience.trim().length > 0 && (
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                         <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Target Audience</h3>
                                         <div 
@@ -161,8 +185,8 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                     </div>
                                 )}
 
-                                {/* Build Details */}
-                                {project.build_details && (
+                                {/* Build Details - only if has content */}
+                                {project.build_details && project.build_details.trim().length > 0 && (
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                         <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Build Details</h3>
                                         <div 
@@ -172,30 +196,14 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                     </div>
                                 )}
 
-                                {/* Estimated Release */}
-                                {project.estimated_release && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Estimated Release</h3>
-                                        <p className="text-white/90 font-semibold">{new Date(project.estimated_release).toLocaleDateString('en-AU', { year: 'numeric', month: 'long' })}</p>
-                                    </div>
-                                )}
-
-                                {/* Revenue Stream */}
-                                {project.revenue_stream && (
+                                {/* Revenue Stream - only show as tile if it's long content */}
+                                {project.revenue_stream && project.revenue_stream.length >= 50 && (
                                     <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                         <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Revenue Stream</h3>
                                         <div 
                                             className="text-white/90 text-sm leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:text-white"
                                             dangerouslySetInnerHTML={{ __html: project.revenue_stream }}
                                         />
-                                    </div>
-                                )}
-
-                                {/* Market Scope */}
-                                {project.market_scope && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Market Scope</h3>
-                                        <p className="text-white/90 font-semibold">{project.market_scope}</p>
                                     </div>
                                 )}
                             </div>
