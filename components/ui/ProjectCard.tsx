@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Image from 'next/image'
-import { Project, HighlightBadge, HighlightEffect } from '@/lib/types'
+import { Project, HighlightBadge, HighlightEffect, Tag } from '@/lib/types'
 import EnquiryModal from '@/components/modals/EnquiryModal'
 
 interface ProjectCardProps {
@@ -53,6 +53,17 @@ const getEffectClass = (effect: HighlightEffect) => {
 // Strip HTML tags for plain text display
 const stripHtml = (html: string) => {
     return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+}
+
+// Tag colours by category
+const getTagColor = (category: string) => {
+    switch (category) {
+        case 'tech_stack': return 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+        case 'build_phase': return 'bg-green-500/15 text-green-300 border-green-500/30'
+        case 'business_model': return 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+        case 'project_type': return 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+        default: return 'bg-gray-500/15 text-gray-300 border-gray-500/30'
+    }
 }
 
 export default function ProjectCard({ project, index, variant = 'standard' }: ProjectCardProps) {
@@ -192,11 +203,30 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                 </h3>
 
                 {/* Description */}
-                <p className={`mb-8 flex-grow leading-relaxed text-sm
+                <p className={`mb-4 leading-relaxed text-sm
                     ${variant === 'industrial' ? 'text-blue-200/60 font-mono text-xs' : 'text-silver-400 font-light'}
                 `}>
                     {stripHtml(project.short_description)}
                 </p>
+
+                {/* Project Tags */}
+                {project.tags && project.tags.length > 0 && (
+                    <div className="mb-6 flex flex-wrap gap-1.5">
+                        {project.tags.slice(0, 5).map((tag) => (
+                            <span
+                                key={tag.id}
+                                className={`inline-flex items-center px-2 py-0.5 text-[9px] font-medium tracking-wide border rounded ${getTagColor(tag.category)}`}
+                            >
+                                {tag.name}
+                            </span>
+                        ))}
+                        {project.tags.length > 5 && (
+                            <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-medium text-silver-500">
+                                +{project.tags.length - 5} more
+                            </span>
+                        )}
+                    </div>
+                )}
 
                 {/* Action Button */}
                 {project.website_url && (
