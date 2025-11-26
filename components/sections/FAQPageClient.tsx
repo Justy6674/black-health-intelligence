@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 
@@ -188,7 +189,7 @@ export default function FAQPageClient() {
                     <p className="text-silver-400 mb-6">
                         Can&apos;t find what you&apos;re looking for? Get in touch and we&apos;ll be happy to help.
                     </p>
-                    <a
+                    <Link
                         href="/#contact"
                         className="inline-flex items-center gap-2 px-6 py-3 bg-white/10 border border-white/20 text-white font-medium hover:bg-white/20 transition-colors"
                     >
@@ -196,7 +197,7 @@ export default function FAQPageClient() {
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                         </svg>
-                    </a>
+                    </Link>
                 </div>
             </motion.div>
         </div>
