@@ -29,7 +29,7 @@ export default function About() {
                         backdropFilter: 'blur(10px)',
                     }}
                 >
-                    <div className="prose prose-invert max-w-none">
+                    <div className="prose prose-invert max-w-none text-center">
                         <div className="space-y-4 mb-8">
                             <p className="text-xl text-white leading-relaxed">
                                 <span className="text-[var(--electric-blue)] font-semibold">We care for patients</span> — because we&apos;re nurses first.
@@ -45,23 +45,23 @@ export default function About() {
                             </p>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10 pt-8 border-t border-silver-700/30">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10 pt-8 border-t border-silver-700/30 text-center">
                             <div>
-                                <h4 className="text-white font-semibold mb-2">Patient Care</h4>
+                                <h4 className="text-white font-semibold mb-2">Clinical</h4>
                                 <p className="text-sm text-silver-400">
-                                    Nurse-led clinical practice delivering real healthcare — not corporate medicine.
+                                    Downscale.com.au — Nurse Practitioner-led telehealth for weight loss, families, illness, injury, certificates, and paediatrics.
                                 </p>
                             </div>
                             <div>
-                                <h4 className="text-white font-semibold mb-2">Problem Solving</h4>
+                                <h4 className="text-white font-semibold mb-2">Health SaaS</h4>
                                 <p className="text-sm text-silver-400">
-                                    Building SaaS tools that fix what&apos;s broken in healthcare systems.
+                                    Building software that solves real problems in healthcare — compliance, workflows, and patient care tools.
                                 </p>
                             </div>
                             <div>
-                                <h4 className="text-white font-semibold mb-2">Innovation</h4>
+                                <h4 className="text-white font-semibold mb-2">Non-Health SaaS</h4>
                                 <p className="text-sm text-silver-400">
-                                    Creating solutions across health and beyond — because good ideas don&apos;t wait.
+                                    Great ideas don&apos;t wait — we build solutions beyond healthcare when the opportunity is right.
                                 </p>
                             </div>
                         </div>
