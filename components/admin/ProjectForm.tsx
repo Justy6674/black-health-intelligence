@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
-import { ProjectCategory, ProjectStatus, ProjectSubcategory, MarketScope, Tag, HighlightBadge, HighlightEffect } from '@/lib/types'
+import { ProjectCategory, ProjectStatus, ProjectSubcategory, MarketScope, Tag, HighlightBadge, HighlightEffect, CustomBadge } from '@/lib/types'
 import TagSelector from './TagSelector'
+import CustomBadgeEditor from './CustomBadgeEditor'
 
 // Define component props and inner form component separately to wrap in Suspense
 interface ProjectFormProps {
@@ -36,34 +37,11 @@ interface ProjectFormProps {
         tags?: Tag[]
         highlight_badges?: HighlightBadge[]
         highlight_effect?: HighlightEffect
+        custom_badges?: CustomBadge[]
         show_contact_button?: boolean
     }>
 }
 
-// Available highlight badges
-const HIGHLIGHT_BADGE_OPTIONS: HighlightBadge[] = [
-    'For Sale',
-    'Seeking Partners',
-    'Hiring',
-    'Revenue Raising',
-    'New',
-    'Featured',
-    'Coming Soon'
-]
-
-// Badge colours for preview
-const getBadgeColor = (badge: HighlightBadge) => {
-    switch (badge) {
-        case 'For Sale': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-        case 'Seeking Partners': return 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-        case 'Hiring': return 'bg-green-500/20 text-green-300 border-green-500/30'
-        case 'Revenue Raising': return 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-        case 'New': return 'bg-pink-500/20 text-pink-300 border-pink-500/30'
-        case 'Featured': return 'bg-orange-500/20 text-orange-300 border-orange-500/30'
-        case 'Coming Soon': return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-        default: return 'bg-gray-500/20 text-gray-300 border-gray-500/30'
-    }
-}
 
 // AI Format Button Component
 function AIFormatButton({ 
@@ -165,6 +143,7 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
         investment_opportunity: initialData?.investment_opportunity || false,
         highlight_badges: initialData?.highlight_badges || [] as HighlightBadge[],
         highlight_effect: initialData?.highlight_effect || 'none' as HighlightEffect,
+        custom_badges: initialData?.custom_badges || [] as CustomBadge[],
         show_contact_button: initialData?.show_contact_button || false,
     })
 
@@ -708,83 +687,20 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                 </div>
             </div>
 
-            {/* Highlight Badges Section */}
+            {/* Custom Badges Section - Full Control */}
             <div className="border-b border-white/10 pb-6">
-                <h2 className="text-xl font-bold text-white mb-2">Highlight Badges & Effects</h2>
-                <p className="text-sm text-silver-500 mb-4">Add attention-grabbing badges to your project cards. These will be displayed prominently on the platform.</p>
+                <h2 className="text-xl font-bold text-white mb-2">Custom Badges</h2>
+                <p className="text-sm text-silver-500 mb-4">
+                    Create custom badges with your own text, colour, and effects. These will be displayed prominently on your project cards.
+                </p>
 
-                {/* Badge selector */}
-                <div className="mb-6">
-                    <label className="block text-sm font-medium text-silver-300 mb-3">
-                        Select Badges
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                        {HIGHLIGHT_BADGE_OPTIONS.map(badge => {
-                            const isSelected = formData.highlight_badges.includes(badge)
-                            return (
-                                <button
-                                    key={badge}
-                                    type="button"
-                                    onClick={() => {
-                                        if (isSelected) {
-                                            setFormData({
-                                                ...formData,
-                                                highlight_badges: formData.highlight_badges.filter(b => b !== badge)
-                                            })
-                                        } else {
-                                            setFormData({
-                                                ...formData,
-                                                highlight_badges: [...formData.highlight_badges, badge]
-                                            })
-                                        }
-                                    }}
-                                    className={`px-4 py-2 text-sm font-medium rounded-full border transition-all ${
-                                        isSelected 
-                                            ? `${getBadgeColor(badge)} ring-2 ring-white/30` 
-                                            : 'bg-white/5 text-silver-400 border-white/10 hover:bg-white/10'
-                                    }`}
-                                >
-                                    {badge}
-                                </button>
-                            )
-                        })}
-                    </div>
-                    {formData.highlight_badges.length > 0 && (
-                        <p className="text-xs text-silver-500 mt-2">
-                            Selected: {formData.highlight_badges.join(', ')}
-                        </p>
-                    )}
-                </div>
-
-                {/* Effect selector */}
-                <div className="mb-6">
-                    <label className="block text-sm font-medium text-silver-300 mb-3">
-                        Badge Effect
-                    </label>
-                    <div className="flex gap-4">
-                        {(['none', 'glow', 'pulse'] as HighlightEffect[]).map(effect => (
-                            <label key={effect} className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="highlight_effect"
-                                    value={effect}
-                                    checked={formData.highlight_effect === effect}
-                                    onChange={(e) => setFormData({ ...formData, highlight_effect: e.target.value as HighlightEffect })}
-                                    className="w-4 h-4 text-slate-blue bg-charcoal border-silver-700/30 focus:ring-2 focus:ring-slate-blue"
-                                />
-                                <span className="text-sm text-silver-300 capitalize">{effect === 'none' ? 'No Effect' : effect}</span>
-                            </label>
-                        ))}
-                    </div>
-                    <p className="text-xs text-silver-500 mt-2">
-                        {formData.highlight_effect === 'glow' && 'Badges will have a soft glowing effect'}
-                        {formData.highlight_effect === 'pulse' && 'Badges will have a subtle pulsing animation'}
-                        {formData.highlight_effect === 'none' && 'Badges will be displayed without animation'}
-                    </p>
-                </div>
+                <CustomBadgeEditor
+                    badges={formData.custom_badges}
+                    onChange={(badges) => setFormData({ ...formData, custom_badges: badges })}
+                />
 
                 {/* Contact button toggle */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 mt-6 pt-6 border-t border-white/10">
                     <input
                         id="show_contact_button"
                         type="checkbox"

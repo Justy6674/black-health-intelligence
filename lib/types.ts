@@ -1,5 +1,16 @@
-export type HighlightBadge = 'For Sale' | 'Seeking Partners' | 'Hiring' | 'Revenue Raising' | 'New' | 'Featured' | 'Coming Soon'
+// Legacy preset badges (kept for backwards compatibility)
+export type HighlightBadgePreset = 'For Sale' | 'Seeking Partners' | 'Hiring' | 'Revenue Raising' | 'New' | 'Featured' | 'Coming Soon'
+export type HighlightBadge = HighlightBadgePreset // Alias for backwards compatibility
 export type HighlightEffect = 'none' | 'glow' | 'pulse'
+export type BadgeColor = 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'orange' | 'cyan' | 'red' | 'white' | 'gold'
+
+// Custom badge with full control
+export interface CustomBadge {
+    id: string
+    text: string
+    color: BadgeColor
+    effect: HighlightEffect
+}
 
 // Forward declaration for Tag (defined below)
 export interface Tag {
@@ -34,9 +45,11 @@ export interface Project {
     sale_price?: number
     investment_opportunity?: boolean
     development_phase?: 'concept' | 'mvp' | 'beta' | 'production' | 'early-stage' | 'growth' | 'scaling' | 'established'
-    // Highlight badges system
+    // Highlight badges system (legacy preset badges)
     highlight_badges?: HighlightBadge[]
     highlight_effect?: HighlightEffect
+    // Custom badges with full control (new system)
+    custom_badges?: CustomBadge[]
     show_contact_button?: boolean
     // Tags (attached at runtime)
     tags?: Tag[]
