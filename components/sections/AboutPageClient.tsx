@@ -422,7 +422,7 @@ export default function AboutPageClient() {
 
             {/* Contact Modal */}
             <ContactModal 
-                isOpen={contactOpen} 
+                open={contactOpen} 
                 onClose={() => setContactOpen(false)} 
             />
         </>

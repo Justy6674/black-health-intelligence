@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const OFFICE_EMAIL = 'office@blackhealthintelligence.com'
 
 export async function POST(request: NextRequest) {
@@ -15,6 +14,8 @@ export async function POST(request: NextRequest) {
         if (!process.env.RESEND_API_KEY) {
             return NextResponse.json({ error: 'Resend API key not configured' }, { status: 500 })
         }
+
+        const resend = new Resend(process.env.RESEND_API_KEY)
 
         // Send email to the business owner
         await resend.emails.send({
