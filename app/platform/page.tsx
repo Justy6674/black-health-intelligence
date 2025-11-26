@@ -71,6 +71,15 @@ export default async function PortfolioPage() {
     const nonHealthSaasData = nonHealthSaasResult.data
     const partnerSolutionsData = partnerSolutionsResult.data
 
+    // Debug: Log what we got from database
+    console.log('=== PORTFOLIO DEBUG ===')
+    console.log('Clinical projects:', clinicalData?.length, clinicalData?.map(p => p.name))
+    console.log('Health SaaS projects:', healthSaasData?.length, healthSaasData?.map(p => p.name))
+    console.log('Non-Health SaaS projects:', nonHealthSaasData?.length, nonHealthSaasData?.map(p => p.name))
+    console.log('Partner Solutions:', partnerSolutionsData?.length, partnerSolutionsData?.map(p => p.name))
+    if (healthSaasResult.error) console.log('Health SaaS ERROR:', healthSaasResult.error)
+    console.log('=== END DEBUG ===')
+
     // Attach tags in parallel
     const allProjects = [
         ...(clinicalData || []),
