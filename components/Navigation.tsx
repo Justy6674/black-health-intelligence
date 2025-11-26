@@ -43,17 +43,8 @@ export default function Navigation() {
                         </Link>
                     </div>
 
-                    {/* Center: Brand */}
-                    {pathname !== '/' && (
-                        <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2">
-                            <span className="text-xs font-bold tracking-[0.3em] text-white/80 uppercase">
-                                Black Health Intelligence
-                            </span>
-                        </div>
-                    )}
-
                     {/* Right: Navigation Links */}
-                    <div className="hidden md:flex items-center gap-12">
+                    <div className="hidden md:flex items-center gap-8">
                         <Link 
                             href="/solutions" 
                             className={`text-xs font-medium tracking-[0.2em] uppercase transition-all hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] ${isActive('/solutions') ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]' : 'text-silver-400'}`}
