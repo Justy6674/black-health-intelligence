@@ -82,11 +82,13 @@ function FullWidthProjectCard({ project, onClick }: { project: Project; onClick:
 export default function PlatformPageClient({ 
     clinicalProject, 
     healthSaasProjects, 
-    nonHealthSaasProjects 
+    nonHealthSaasProjects,
+    partnerSolutionsProjects = []
 }: { 
     clinicalProject: Project | null
     healthSaasProjects: Project[]
     nonHealthSaasProjects: Project[]
+    partnerSolutionsProjects?: Project[]
 }) {
     const [selectedProject, setSelectedProject] = useState<Project | null>(null)
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -129,6 +131,22 @@ export default function PlatformPageClient({
                         <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Non-Health-Related SaaS</h2>
                         <div className="space-y-6">
                             {nonHealthSaasProjects.map((project) => (
+                                <FullWidthProjectCard 
+                                    key={project.id} 
+                                    project={project} 
+                                    onClick={() => handleCardClick(project)} 
+                                />
+                            ))}
+                        </div>
+                    </section>
+                )}
+
+                {/* Partner Solutions Section */}
+                {partnerSolutionsProjects.length > 0 && (
+                    <section className="mb-20">
+                        <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Partner Solutions</h2>
+                        <div className="space-y-6">
+                            {partnerSolutionsProjects.map((project) => (
                                 <FullWidthProjectCard 
                                     key={project.id} 
                                     project={project} 

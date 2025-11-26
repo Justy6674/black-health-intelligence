@@ -37,7 +37,7 @@ export default async function PortfolioPage() {
     const supabase = await createClient()
 
     // Fetch all project categories in parallel for faster loading
-    const [clinicalResult, healthSaasResult, nonHealthSaasResult] = await Promise.all([
+    const [clinicalResult, healthSaasResult, nonHealthSaasResult, partnerSolutionsResult] = await Promise.all([
         supabase
             .from('projects')
             .select('*')
@@ -58,18 +58,26 @@ export default async function PortfolioPage() {
             .eq('category', 'health-saas')
             .eq('subcategory', 'non-health-saas')
             .neq('status', 'archived')
+            .order('display_order', { ascending: true }),
+        supabase
+            .from('projects')
+            .select('*')
+            .eq('category', 'partner-solutions')
+            .neq('status', 'archived')
             .order('display_order', { ascending: true })
     ])
 
     const clinicalData = clinicalResult.data
     const healthSaasData = healthSaasResult.data
     const nonHealthSaasData = nonHealthSaasResult.data
+    const partnerSolutionsData = partnerSolutionsResult.data
 
     // Attach tags in parallel
     const allProjects = [
         ...(clinicalData || []),
         ...(healthSaasData || []),
-        ...(nonHealthSaasData || [])
+        ...(nonHealthSaasData || []),
+        ...(partnerSolutionsData || [])
     ] as Project[]
 
     const projectsWithTags = await attachTagsToProjects(supabase, allProjects)
@@ -78,6 +86,7 @@ export default async function PortfolioPage() {
     const clinicalProject = projectsWithTags.find(p => p.category === 'clinical') || null
     const healthSaasProjects = projectsWithTags.filter(p => p.category === 'health-saas' && p.subcategory === 'health-saas')
     const nonHealthSaasProjects = projectsWithTags.filter(p => p.category === 'health-saas' && p.subcategory === 'non-health-saas')
+    const partnerSolutionsProjects = projectsWithTags.filter(p => p.category === 'partner-solutions')
 
     return (
         <main className="min-h-screen bg-deep-black relative overflow-hidden">
@@ -88,6 +97,7 @@ export default async function PortfolioPage() {
                 clinicalProject={clinicalProject}
                 healthSaasProjects={healthSaasProjects}
                 nonHealthSaasProjects={nonHealthSaasProjects}
+                partnerSolutionsProjects={partnerSolutionsProjects}
             />
             
             <Footer />

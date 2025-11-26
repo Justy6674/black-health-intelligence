@@ -389,6 +389,7 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                         required
                         value={
                             formData.category === 'clinical' ? 'clinical' :
+                            formData.category === 'partner-solutions' ? 'partner-solutions' :
                             formData.category === 'other' ? 'other' :
                             formData.category === 'health-saas' && formData.subcategory === 'non-health-saas' ? 'health-saas-non-health-saas' :
                             formData.category === 'health-saas' && formData.subcategory === 'health-saas' ? 'health-saas-health-saas' :
@@ -402,6 +403,8 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                                 setFormData({ ...formData, category: 'health-saas' as ProjectCategory, subcategory: 'health-saas' as ProjectSubcategory })
                             } else if (val === 'health-saas-non-health-saas') {
                                 setFormData({ ...formData, category: 'health-saas' as ProjectCategory, subcategory: 'non-health-saas' as ProjectSubcategory })
+                            } else if (val === 'partner-solutions') {
+                                setFormData({ ...formData, category: 'partner-solutions' as ProjectCategory, subcategory: undefined })
                             } else {
                                 setFormData({ ...formData, category: 'other' as ProjectCategory, subcategory: undefined })
                             }
@@ -411,6 +414,7 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                         <option value="clinical">🏥 Clinical Site (Downscale, etc.)</option>
                         <option value="health-saas-health-saas">💊 Health-Related SaaS (TeleCheck, etc.)</option>
                         <option value="health-saas-non-health-saas">🚀 Non-Health SaaS (ScentSwap, etc.)</option>
+                        <option value="partner-solutions">🤝 Partner Solutions</option>
                         <option value="other">📦 Other Ventures</option>
                     </select>
                     <p className="text-xs text-silver-500 mt-1">

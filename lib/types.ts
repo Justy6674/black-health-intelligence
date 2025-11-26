@@ -26,7 +26,7 @@ export interface Project {
     id: string
     name: string
     slug: string
-    category: 'clinical' | 'health-saas' | 'other'
+    category: 'clinical' | 'health-saas' | 'other' | 'partner-solutions'
     subcategory?: 'health-saas' | 'non-health-saas'
     short_description: string
     long_description?: string
