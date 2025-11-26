@@ -24,10 +24,10 @@ export default async function Image() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor: '#050505',
-                    backgroundImage: 'linear-gradient(135deg, #050505 0%, #0a1628 50%, #050505 100%)',
+                    backgroundImage: 'linear-gradient(135deg, #050505 0%, #1a1a1a 50%, #050505 100%)',
                 }}
             >
-                {/* Decorative elements */}
+                {/* Decorative elements - metallic/silver tones */}
                 <div
                     style={{
                         position: 'absolute',
@@ -35,7 +35,7 @@ export default async function Image() {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundImage: 'radial-gradient(circle at 20% 80%, rgba(14, 165, 233, 0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(14, 165, 233, 0.1) 0%, transparent 50%)',
+                        backgroundImage: 'radial-gradient(circle at 20% 80%, rgba(192, 192, 192, 0.08) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%)',
                         display: 'flex',
                     }}
                 />
@@ -62,12 +62,12 @@ export default async function Image() {
                         }}
                     />
 
-                    {/* Title */}
+                    {/* Title - metallic silver */}
                     <div
                         style={{
                             fontSize: 64,
                             fontWeight: 700,
-                            color: 'white',
+                            color: '#e0e0e0',
                             textAlign: 'center',
                             marginBottom: 16,
                             display: 'flex',
@@ -80,7 +80,7 @@ export default async function Image() {
                     <div
                         style={{
                             fontSize: 28,
-                            color: 'rgba(255, 255, 255, 0.7)',
+                            color: 'rgba(192, 192, 192, 0.8)',
                             textAlign: 'center',
                             display: 'flex',
                         }}
@@ -88,11 +88,11 @@ export default async function Image() {
                         Healthcare Innovation Portfolio
                     </div>
 
-                    {/* Tagline */}
+                    {/* Tagline - silver/gray */}
                     <div
                         style={{
                             fontSize: 20,
-                            color: '#0ea5e9',
+                            color: '#a0a0a0',
                             textAlign: 'center',
                             marginTop: 24,
                             display: 'flex',
@@ -102,7 +102,7 @@ export default async function Image() {
                     </div>
                 </div>
 
-                {/* Bottom border accent */}
+                {/* Bottom border accent - metallic silver gradient */}
                 <div
                     style={{
                         position: 'absolute',
@@ -110,7 +110,7 @@ export default async function Image() {
                         left: 0,
                         right: 0,
                         height: 4,
-                        background: 'linear-gradient(90deg, transparent, #0ea5e9, transparent)',
+                        background: 'linear-gradient(90deg, transparent, #c0c0c0, #ffffff, #c0c0c0, transparent)',
                         display: 'flex',
                     }}
                 />
