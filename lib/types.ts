@@ -1,6 +1,16 @@
 export type HighlightBadge = 'For Sale' | 'Seeking Partners' | 'Hiring' | 'Revenue Raising' | 'New' | 'Featured' | 'Coming Soon'
 export type HighlightEffect = 'none' | 'glow' | 'pulse'
 
+// Forward declaration for Tag (defined below)
+export interface Tag {
+    id: string
+    name: string
+    category: TagCategory
+    created_at: string
+}
+
+export type TagCategory = 'tech_stack' | 'build_phase' | 'business_model' | 'project_type'
+
 export interface Project {
     id: string
     name: string
@@ -28,6 +38,8 @@ export interface Project {
     highlight_badges?: HighlightBadge[]
     highlight_effect?: HighlightEffect
     show_contact_button?: boolean
+    // Tags (attached at runtime)
+    tags?: Tag[]
     created_at: string
     updated_at: string
 }
@@ -47,24 +59,9 @@ export interface SiteSetting {
     updated_at: string
 }
 
-// Tag system
-export type TagCategory = 'tech_stack' | 'build_phase' | 'business_model' | 'project_type'
-
-export interface Tag {
-    id: string
-    name: string
-    category: TagCategory
-    created_at: string
-}
-
 export interface ProjectTag {
     project_id: string
     tag_id: string
-}
-
-// Extended project with tags
-export interface ProjectWithTags extends Project {
-    tags?: Tag[]
 }
 
 export type ProjectCategory = Project['category']
