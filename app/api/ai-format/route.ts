@@ -13,8 +13,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 })
         }
 
-        // Different prompts based on field type - ALL USE AUSTRALIAN ENGLISH
-        const baseInstruction = `IMPORTANT: Use Australian English spelling (e.g., colour, organisation, centre, behaviour, realise, programme). This is for an Australian business.`
+        // Different prompts based on field type - ALL USE AUSTRALIAN ENGLISH, NO MARKDOWN
+        const baseInstruction = `IMPORTANT: 
+1. Use Australian English spelling (e.g., colour, organisation, centre, behaviour, realise, programme). This is for an Australian business.
+2. DO NOT use any markdown formatting - no asterisks (*), no bold (**), no headers (#), no bullet points. Return plain text only.
+3. Do not wrap text in quotes.`
 
         const prompts: Record<string, string> = {
             short_description: `You are a professional copywriter. ${baseInstruction}
