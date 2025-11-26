@@ -43,8 +43,7 @@ export default async function PortfolioPage() {
             .select('*')
             .eq('category', 'clinical')
             .neq('status', 'archived')
-            .order('display_order', { ascending: true })
-            .limit(1),
+            .order('display_order', { ascending: true }),
         supabase
             .from('projects')
             .select('*')
@@ -83,7 +82,7 @@ export default async function PortfolioPage() {
     const projectsWithTags = await attachTagsToProjects(supabase, allProjects)
 
     // Separate back into categories
-    const clinicalProject = projectsWithTags.find(p => p.category === 'clinical') || null
+    const clinicalProjects = projectsWithTags.filter(p => p.category === 'clinical')
     const healthSaasProjects = projectsWithTags.filter(p => p.category === 'health-saas' && p.subcategory === 'health-saas')
     const nonHealthSaasProjects = projectsWithTags.filter(p => p.category === 'health-saas' && p.subcategory === 'non-health-saas')
     const partnerSolutionsProjects = projectsWithTags.filter(p => p.category === 'partner-solutions')
@@ -94,7 +93,7 @@ export default async function PortfolioPage() {
             <FlowFieldBackgroundWrapper />
             
             <PlatformPageClient 
-                clinicalProject={clinicalProject}
+                clinicalProjects={clinicalProjects}
                 healthSaasProjects={healthSaasProjects}
                 nonHealthSaasProjects={nonHealthSaasProjects}
                 partnerSolutionsProjects={partnerSolutionsProjects}

@@ -80,12 +80,12 @@ function FullWidthProjectCard({ project, onClick }: { project: Project; onClick:
 }
 
 export default function PlatformPageClient({ 
-    clinicalProject, 
+    clinicalProjects, 
     healthSaasProjects, 
     nonHealthSaasProjects,
     partnerSolutionsProjects = []
 }: { 
-    clinicalProject: Project | null
+    clinicalProjects: Project[]
     healthSaasProjects: Project[]
     nonHealthSaasProjects: Project[]
     partnerSolutionsProjects?: Project[]
@@ -102,10 +102,18 @@ export default function PlatformPageClient({
         <>
             <div className="pt-32 pb-20 relative z-10 section-container">
                 {/* Direct Clinical Care Section */}
-                {clinicalProject && (
+                {clinicalProjects.length > 0 && (
                     <section className="mb-20">
                         <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Direct Clinical Care Businesses</h2>
-                        <FullWidthProjectCard project={clinicalProject} onClick={() => handleCardClick(clinicalProject)} />
+                        <div className="space-y-6">
+                            {clinicalProjects.map((project) => (
+                                <FullWidthProjectCard 
+                                    key={project.id} 
+                                    project={project} 
+                                    onClick={() => handleCardClick(project)} 
+                                />
+                            ))}
+                        </div>
                     </section>
                 )}
 
