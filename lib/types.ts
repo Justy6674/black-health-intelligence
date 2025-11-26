@@ -44,6 +44,10 @@ export interface Project {
     for_sale?: boolean
     sale_price?: number
     investment_opportunity?: boolean
+    capital_raising?: boolean
+    capital_raise_amount?: number
+    capital_raise_deadline?: string
+    investment_details?: string
     development_phase?: 'concept' | 'mvp' | 'beta' | 'production' | 'early-stage' | 'growth' | 'scaling' | 'established'
     // Highlight badges system (legacy preset badges)
     highlight_badges?: HighlightBadge[]

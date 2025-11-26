@@ -34,6 +34,10 @@ interface ProjectFormProps {
         for_sale?: boolean
         sale_price?: number
         investment_opportunity?: boolean
+        capital_raising?: boolean
+        capital_raise_amount?: number
+        capital_raise_deadline?: string
+        investment_details?: string
         tags?: Tag[]
         highlight_badges?: HighlightBadge[]
         highlight_effect?: HighlightEffect
@@ -141,6 +145,10 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
         for_sale: initialData?.for_sale || false,
         sale_price: initialData?.sale_price || '',
         investment_opportunity: initialData?.investment_opportunity || false,
+        capital_raising: initialData?.capital_raising || false,
+        capital_raise_amount: initialData?.capital_raise_amount || '',
+        capital_raise_deadline: initialData?.capital_raise_deadline || '',
+        investment_details: initialData?.investment_details || '',
         highlight_badges: initialData?.highlight_badges || [] as HighlightBadge[],
         highlight_effect: initialData?.highlight_effect || 'none' as HighlightEffect,
         custom_badges: initialData?.custom_badges || [] as CustomBadge[],
@@ -224,6 +232,9 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                 slug,
                 logo_url: logoUrl,
                 sale_price: formData.sale_price ? parseFloat(formData.sale_price.toString()) : null,
+                capital_raise_amount: formData.capital_raise_amount ? parseFloat(formData.capital_raise_amount.toString()) : null,
+                capital_raise_deadline: formData.capital_raise_deadline || null,
+                investment_details: formData.investment_details || null,
                 estimated_release: formData.estimated_release || null,
                 subcategory: formData.category === 'health-saas' ? formData.subcategory : null,
             }
@@ -697,6 +708,67 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                         Seeking Investment / Partners
                     </label>
                 </div>
+
+                {/* Capital Raising */}
+                <div className="mb-4 flex items-center gap-3">
+                    <input
+                        id="capital_raising"
+                        type="checkbox"
+                        checked={formData.capital_raising}
+                        onChange={(e) => setFormData({ ...formData, capital_raising: e.target.checked })}
+                        className="w-5 h-5 rounded bg-charcoal border-silver-700/30 text-slate-blue focus:ring-2 focus:ring-slate-blue"
+                    />
+                    <label htmlFor="capital_raising" className="text-sm font-medium text-silver-300">
+                        Currently Raising Capital
+                    </label>
+                </div>
+
+                {/* Capital raise details - only show if capital_raising is checked */}
+                {formData.capital_raising && (
+                    <div className="ml-8 space-y-4 p-4 bg-green-500/5 border border-green-500/20 rounded-lg">
+                        <div>
+                            <label htmlFor="capital_raise_amount" className="block text-sm font-medium text-silver-300 mb-2">
+                                Target Raise Amount (AUD)
+                            </label>
+                            <input
+                                id="capital_raise_amount"
+                                type="number"
+                                step="1000"
+                                value={formData.capital_raise_amount}
+                                onChange={(e) => setFormData({ ...formData, capital_raise_amount: e.target.value ? parseFloat(e.target.value) : '' })}
+                                className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                placeholder="e.g. 50000"
+                            />
+                        </div>
+
+                        <div>
+                            <label htmlFor="capital_raise_deadline" className="block text-sm font-medium text-silver-300 mb-2">
+                                Capital Raise Deadline
+                            </label>
+                            <input
+                                id="capital_raise_deadline"
+                                type="date"
+                                value={formData.capital_raise_deadline}
+                                onChange={(e) => setFormData({ ...formData, capital_raise_deadline: e.target.value })}
+                                className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            />
+                        </div>
+
+                        <div>
+                            <label htmlFor="investment_details" className="block text-sm font-medium text-silver-300 mb-2">
+                                Investment Details / What You&apos;re Offering
+                            </label>
+                            <textarea
+                                id="investment_details"
+                                value={formData.investment_details}
+                                onChange={(e) => setFormData({ ...formData, investment_details: e.target.value })}
+                                rows={3}
+                                className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white placeholder-silver-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-y"
+                                placeholder="e.g. Offering 10% equity for $50,000. Funds will be used for..."
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Custom Badges Section - Full Control */}
