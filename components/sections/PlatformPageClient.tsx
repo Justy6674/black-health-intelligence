@@ -104,7 +104,7 @@ export default function PlatformPageClient({
                 {/* Clinical Site Section */}
                 {clinicalProject && (
                     <section className="mb-20">
-                        <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Clinical Site</h2>
+                        <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Direct Clinical Care Businesses</h2>
                         <FullWidthProjectCard project={clinicalProject} onClick={() => handleCardClick(clinicalProject)} />
                     </section>
                 )}
