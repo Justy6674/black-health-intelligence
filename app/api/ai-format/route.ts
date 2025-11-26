@@ -13,39 +13,53 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 })
         }
 
-        // Different prompts based on field type
+        // Different prompts based on field type - ALL USE AUSTRALIAN ENGLISH
+        const baseInstruction = `IMPORTANT: Use Australian English spelling (e.g., colour, organisation, centre, behaviour, realise, programme). This is for an Australian business.`
+
         const prompts: Record<string, string> = {
-            short_description: `You are a professional copywriter. Clean up and format this project description for a portfolio card. Make it compelling, professional, and concise (2-3 sentences max). Fix any grammar or spelling issues. Keep the core message but make it polished:
+            short_description: `You are a professional copywriter. ${baseInstruction}
+
+Clean up and format this project description for a portfolio card. Make it compelling, professional, and concise (2-3 sentences max). Fix any grammar or spelling issues. Keep the core message but make it polished:
 
 "${text}"
 
 Return ONLY the improved text, nothing else.`,
 
-            long_description: `You are a professional copywriter. Clean up and format this detailed project description. Make it professional, well-structured, and compelling. Fix grammar, improve clarity, and organize into clear paragraphs if needed. Keep all important details:
+            long_description: `You are a professional copywriter. ${baseInstruction}
+
+Clean up and format this detailed project description. Make it professional, well-structured, and compelling. Fix grammar, improve clarity, and organize into clear paragraphs if needed. Keep all important details:
 
 "${text}"
 
 Return ONLY the improved text, nothing else.`,
 
-            problem_solves: `You are a professional copywriter. Clean up and format this problem statement for a project. Make it clear, compelling, and professional. Explain the problem in a way that resonates with the target audience:
+            problem_solves: `You are a professional copywriter. ${baseInstruction}
+
+Clean up and format this problem statement for a project. Make it clear, compelling, and professional. Explain the problem in a way that resonates with the target audience:
 
 "${text}"
 
 Return ONLY the improved text, nothing else.`,
 
-            target_audience: `You are a professional copywriter. Clean up and format this target audience description. Make it clear and specific. Use professional language:
+            target_audience: `You are a professional copywriter. ${baseInstruction}
+
+Clean up and format this target audience description. Make it clear and specific. Use professional language:
 
 "${text}"
 
 Return ONLY the improved text, nothing else.`,
 
-            build_details: `You are a technical writer. Clean up and format this tech stack / build details description. Make it clear, organized, and professional. List technologies clearly:
+            build_details: `You are a technical writer. ${baseInstruction}
+
+Clean up and format this tech stack / build details description. Make it clear, organized, and professional. List technologies clearly:
 
 "${text}"
 
 Return ONLY the improved text, nothing else.`,
 
-            default: `You are a professional copywriter. Clean up and format this text. Fix grammar, improve clarity, and make it professional:
+            default: `You are a professional copywriter. ${baseInstruction}
+
+Clean up and format this text. Fix grammar, improve clarity, and make it professional:
 
 "${text}"
 
