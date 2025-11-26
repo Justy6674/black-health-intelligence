@@ -21,10 +21,10 @@ export default function Footer() {
                         <div className="space-y-2 text-silver-400 text-sm">
                             <p>
                                 <a
-                                    href="mailto:contact@blackhealthintelligence.com"
+                                    href="mailto:office@blackhealthintelligence.com"
                                     className="hover:text-[var(--electric-blue)] transition-colors"
                                 >
-                                    contact@blackhealthintelligence.com
+                                    office@blackhealthintelligence.com
                                 </a>
                             </p>
                         </div>

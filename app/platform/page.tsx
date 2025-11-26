@@ -4,10 +4,16 @@ import Navigation from '@/components/Navigation'
 import FlowFieldBackground from '@/components/ui/FlowFieldBackground'
 import PlatformPageClient from '@/components/sections/PlatformPageClient'
 import Footer from '@/components/sections/Footer'
+import { Metadata } from 'next'
+
+export const metadata: Metadata = {
+    title: 'Portfolio | Black Health Intelligence',
+    description: 'Explore our portfolio of healthcare and technology projects - clinical practice, health SaaS, and non-health SaaS solutions.',
+}
 
 export const revalidate = 0
 
-export default async function PlatformPage() {
+export default async function PortfolioPage() {
     const supabase = await createClient()
 
     // Fetch clinical project (featured)

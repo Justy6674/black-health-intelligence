@@ -5,10 +5,12 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import PartnerLoginModal from '@/components/modals/PartnerLoginModal'
+import ContactModal from '@/components/modals/ContactModal'
 
 export default function Navigation() {
     const pathname = usePathname()
     const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false)
+    const [isContactModalOpen, setIsContactModalOpen] = useState(false)
 
     const isActive = (path: string) => pathname === path
 
@@ -46,22 +48,16 @@ export default function Navigation() {
                     {/* Right: Navigation Links */}
                     <div className="hidden md:flex items-center gap-8">
                         <Link 
-                            href="/solutions" 
-                            className={`text-xs font-medium tracking-[0.2em] uppercase transition-all hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] ${isActive('/solutions') ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]' : 'text-silver-400'}`}
+                            href="/about" 
+                            className={`text-xs font-medium tracking-[0.2em] uppercase transition-all hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] ${isActive('/about') ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]' : 'text-silver-400'}`}
                         >
-                            Solutions
+                            About
                         </Link>
                         <Link 
                             href="/platform" 
                             className={`text-xs font-medium tracking-[0.2em] uppercase transition-all hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] ${isActive('/platform') ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]' : 'text-silver-400'}`}
                         >
-                            Platform
-                        </Link>
-                        <Link 
-                            href="/#about" 
-                            className="text-silver-400 hover:text-white transition-colors text-xs font-medium tracking-[0.2em] uppercase hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
-                        >
-                            About
+                            Portfolio
                         </Link>
                         <Link 
                             href="/faq" 
@@ -69,12 +65,12 @@ export default function Navigation() {
                         >
                             FAQ
                         </Link>
-                        <Link 
-                            href="/#contact" 
+                        <button
+                            onClick={() => setIsContactModalOpen(true)}
                             className="text-silver-400 hover:text-white transition-colors text-xs font-medium tracking-[0.2em] uppercase hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
                         >
                             Contact
-                        </Link>
+                        </button>
                         <button
                             onClick={() => setIsPartnerModalOpen(true)}
                             className="text-xs font-semibold tracking-[0.25em] uppercase px-4 py-2 border border-white/30 rounded-full text-white hover:border-[var(--electric-blue)] hover:text-[var(--electric-blue)] hover:shadow-[0_0_18px_rgba(14,165,233,0.35)] transition-all"
@@ -87,6 +83,10 @@ export default function Navigation() {
             <PartnerLoginModal
                 open={isPartnerModalOpen}
                 onClose={() => setIsPartnerModalOpen(false)}
+            />
+            <ContactModal
+                open={isContactModalOpen}
+                onClose={() => setIsContactModalOpen(false)}
             />
         </nav>
     )
