@@ -12,20 +12,20 @@ export default function PartnerLoginModal({ open, onClose }: PartnerLoginModalPr
 
     return (
         <div
-            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 pt-24 pb-8 overflow-y-auto"
             role="dialog"
             aria-modal="true"
             onClick={onClose}
         >
             <div 
-                className="relative w-full max-w-md rounded-2xl border border-white/20 bg-[#0a0a0a] p-8 shadow-2xl"
+                className="relative w-full max-w-md rounded-2xl border border-white/20 bg-[#0a0a0a] p-8 shadow-2xl my-auto"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Close button */}
                 <button
                     onClick={onClose}
                     aria-label="Close modal"
-                    className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-colors text-xl"
+                    className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-colors text-2xl leading-none"
                 >
                     ×
                 </button>
