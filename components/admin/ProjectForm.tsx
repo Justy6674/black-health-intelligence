@@ -227,17 +227,24 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
             // Generate slug from name
             const slug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
+            // Build project data - exclude fields that may not exist in DB yet
+            const { capital_raising, capital_raise_amount, capital_raise_deadline, investment_details, ...restFormData } = formData
+            
             const projectData: any = {
-                ...formData,
+                ...restFormData,
                 slug,
                 logo_url: logoUrl,
                 sale_price: formData.sale_price ? parseFloat(formData.sale_price.toString()) : null,
-                capital_raise_amount: formData.capital_raise_amount ? parseFloat(formData.capital_raise_amount.toString()) : null,
-                capital_raise_deadline: formData.capital_raise_deadline || null,
-                investment_details: formData.investment_details || null,
                 estimated_release: formData.estimated_release || null,
                 subcategory: formData.category === 'health-saas' ? formData.subcategory : null,
             }
+            
+            // Only include capital raise fields if they have values (DB columns may not exist yet)
+            // TODO: Remove this check once migration is applied
+            if (capital_raising) projectData.capital_raising = capital_raising
+            if (capital_raise_amount) projectData.capital_raise_amount = parseFloat(capital_raise_amount.toString())
+            if (capital_raise_deadline) projectData.capital_raise_deadline = capital_raise_deadline
+            if (investment_details) projectData.investment_details = investment_details
 
             // Remove empty strings and convert to null
             Object.keys(projectData).forEach(key => {
