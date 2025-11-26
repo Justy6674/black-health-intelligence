@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Image from 'next/image'
-import { Project, HighlightBadge, HighlightEffect, Tag, CustomBadge, BadgeColor } from '@/lib/types'
+import { Project, HighlightEffect, CustomBadge, BadgeColor } from '@/lib/types'
 import EnquiryModal from '@/components/modals/EnquiryModal'
 
 interface ProjectCardProps {
@@ -27,19 +27,6 @@ const statusLabels = {
     archived: 'Archived',
 }
 
-// Legacy badge colours (for backwards compatibility)
-const getLegacyBadgeColor = (badge: HighlightBadge) => {
-    switch (badge) {
-        case 'For Sale': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
-        case 'Seeking Partners': return 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-        case 'Hiring': return 'bg-green-500/20 text-green-300 border-green-500/40'
-        case 'Revenue Raising': return 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-        case 'New': return 'bg-pink-500/20 text-pink-300 border-pink-500/40'
-        case 'Featured': return 'bg-orange-500/20 text-orange-300 border-orange-500/40'
-        case 'Coming Soon': return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-        default: return 'bg-gray-500/20 text-gray-300 border-gray-500/40'
-    }
-}
 
 // Custom badge colour classes
 const getCustomBadgeColor = (color: BadgeColor): string => {
@@ -72,16 +59,6 @@ const stripHtml = (html: string) => {
     return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
 }
 
-// Tag colours by category
-const getTagColor = (category: string) => {
-    switch (category) {
-        case 'tech_stack': return 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-        case 'build_phase': return 'bg-green-500/15 text-green-300 border-green-500/30'
-        case 'business_model': return 'bg-purple-500/15 text-purple-300 border-purple-500/30'
-        case 'project_type': return 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-        default: return 'bg-gray-500/15 text-gray-300 border-gray-500/30'
-    }
-}
 
 export default function ProjectCard({ project, index, variant = 'standard' }: ProjectCardProps) {
     const [enquiryOpen, setEnquiryOpen] = useState(false)
@@ -98,8 +75,6 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
         setEnquiryOpen(true)
     }
 
-    const highlightBadges = project.highlight_badges || []
-    const highlightEffect = project.highlight_effect || 'none'
     const customBadges = project.custom_badges || []
 
     return (
@@ -162,33 +137,6 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                     </span>
                 </div>
 
-                {/* Custom Badges (new system - takes priority) */}
-                {customBadges.length > 0 && (
-                    <div className="mb-4 flex flex-wrap items-center gap-2">
-                        {customBadges.map((badge) => (
-                            <span 
-                                key={badge.id}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest uppercase border rounded-full ${getCustomBadgeColor(badge.color)} ${getEffectClass(badge.effect)}`}
-                            >
-                                {badge.text}
-                            </span>
-                        ))}
-                    </div>
-                )}
-
-                {/* Legacy Highlight Badges (backwards compatibility) */}
-                {customBadges.length === 0 && highlightBadges.length > 0 && (
-                    <div className="mb-4 flex flex-wrap items-center gap-2">
-                        {highlightBadges.map((badge) => (
-                            <span 
-                                key={badge}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest uppercase border rounded-full ${getLegacyBadgeColor(badge)} ${getEffectClass(highlightEffect)}`}
-                            >
-                                {badge}
-                            </span>
-                        ))}
-                    </div>
-                )}
 
                 {/* Project name */}
                 <h3 className={`text-2xl font-bold mb-4 text-white transition-colors
@@ -206,24 +154,6 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                     {stripHtml(project.short_description)}
                 </p>
 
-                {/* Project Tags */}
-                {project.tags && project.tags.length > 0 && (
-                    <div className="mb-6 flex flex-wrap gap-1.5">
-                        {project.tags.slice(0, 5).map((tag) => (
-                            <span
-                                key={tag.id}
-                                className={`inline-flex items-center px-2 py-0.5 text-[9px] font-medium tracking-wide border rounded ${getTagColor(tag.category)}`}
-                            >
-                                {tag.name}
-                            </span>
-                        ))}
-                        {project.tags.length > 5 && (
-                            <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-medium text-silver-500">
-                                +{project.tags.length - 5} more
-                            </span>
-                        )}
-                    </div>
-                )}
 
                 {/* Action Button */}
                 {project.website_url && (
@@ -244,31 +174,48 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                     </div>
                 )}
 
-                {/* Click to View Details Indicator & Contact Button */}
-                <div className="mt-auto pt-4 border-t border-white/10 flex items-center justify-between">
-                    <span className="text-xs text-silver-500 group-hover:text-silver-300 transition-colors">
-                        Click for details
-                    </span>
-                    <div className="flex items-center gap-3">
-                        {project.show_contact_button && (
-                            <button
-                                onClick={handleContactClick}
-                                className="p-2 rounded-full bg-white/5 border border-white/10 text-silver-400 hover:text-white hover:bg-white/10 hover:border-white/30 transition-all"
-                                title="Contact / Enquire"
+                {/* Bottom section with badges and actions */}
+                <div className="mt-auto pt-4 border-t border-white/10">
+                    {/* Custom Badges - Bottom Right */}
+                    {customBadges.length > 0 && (
+                        <div className="mb-3 flex flex-wrap justify-end gap-2">
+                            {customBadges.map((badge) => (
+                                <span 
+                                    key={badge.id}
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest uppercase border rounded-full ${getCustomBadgeColor(badge.color)} ${getEffectClass(badge.effect)}`}
+                                >
+                                    {badge.text}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* Click indicator and contact button */}
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-silver-500 group-hover:text-silver-300 transition-colors">
+                            Click for details
+                        </span>
+                        <div className="flex items-center gap-3">
+                            {project.show_contact_button && (
+                                <button
+                                    onClick={handleContactClick}
+                                    className="p-2 rounded-full bg-white/5 border border-white/10 text-silver-400 hover:text-white hover:bg-white/10 hover:border-white/30 transition-all"
+                                    title="Contact / Enquire"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                </button>
+                            )}
+                            <svg 
+                                className="w-4 h-4 text-silver-500 group-hover:text-white group-hover:translate-x-1 transition-all" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
                             >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                </svg>
-                            </button>
-                        )}
-                        <svg 
-                            className="w-4 h-4 text-silver-500 group-hover:text-white group-hover:translate-x-1 transition-all" 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
-                        >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                        </div>
                     </div>
                 </div>
             </div>
