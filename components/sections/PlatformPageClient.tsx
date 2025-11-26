@@ -101,7 +101,7 @@ export default function PlatformPageClient({
     return (
         <>
             <div className="pt-32 pb-20 relative z-10 section-container">
-                {/* Clinical Site Section */}
+                {/* Direct Clinical Care Section */}
                 {clinicalProject && (
                     <section className="mb-20">
                         <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Direct Clinical Care Businesses</h2>
