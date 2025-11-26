@@ -36,6 +36,73 @@ interface ProjectFormProps {
     }>
 }
 
+// AI Format Button Component
+function AIFormatButton({ 
+    field, 
+    text, 
+    onFormat 
+}: { 
+    field: string
+    text: string
+    onFormat: (formattedText: string) => void 
+}) {
+    const [loading, setLoading] = useState(false)
+
+    const handleFormat = async () => {
+        if (!text.trim()) return
+        
+        setLoading(true)
+        try {
+            const response = await fetch('/api/ai-format', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, field }),
+            })
+            
+            if (!response.ok) {
+                throw new Error('Failed to format')
+            }
+            
+            const data = await response.json()
+            if (data.formattedText) {
+                onFormat(data.formattedText)
+            }
+        } catch (error) {
+            console.error('AI format error:', error)
+            alert('Failed to format text. Please try again.')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={handleFormat}
+            disabled={loading || !text.trim()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Clean up and format with AI"
+        >
+            {loading ? (
+                <>
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Formatting...
+                </>
+            ) : (
+                <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                    </svg>
+                    AI Format
+                </>
+            )}
+        </button>
+    )
+}
+
 function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
     const router = useRouter()
     // Initialize Supabase client directly in component
@@ -47,7 +114,6 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
         )
     })
 
-    // ... existing form logic ...
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         category: initialData?.category || 'health-saas' as ProjectCategory,
@@ -278,9 +344,16 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
 
                 {/* Short description */}
                 <div className="mb-4">
-                    <label htmlFor="short_description" className="block text-sm font-medium text-silver-300 mb-2">
-                        Short Description * (for card preview)
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="short_description" className="block text-sm font-medium text-silver-300">
+                            Short Description * (for card preview)
+                        </label>
+                        <AIFormatButton 
+                            field="short_description" 
+                            text={formData.short_description}
+                            onFormat={(text) => setFormData({ ...formData, short_description: text })}
+                        />
+                    </div>
                     <textarea
                         id="short_description"
                         required
@@ -294,9 +367,16 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
 
                 {/* Long description */}
                 <div className="mb-4">
-                    <label htmlFor="long_description" className="block text-sm font-medium text-silver-300 mb-2">
-                        Long Description (optional)
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="long_description" className="block text-sm font-medium text-silver-300">
+                            Long Description (optional)
+                        </label>
+                        <AIFormatButton 
+                            field="long_description" 
+                            text={formData.long_description}
+                            onFormat={(text) => setFormData({ ...formData, long_description: text })}
+                        />
+                    </div>
                     <textarea
                         id="long_description"
                         rows={6}
@@ -396,9 +476,16 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
 
                 {/* Problem it solves */}
                 <div className="mb-4">
-                    <label htmlFor="problem_solves" className="block text-sm font-medium text-silver-300 mb-2">
-                        Problem It Solves
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="problem_solves" className="block text-sm font-medium text-silver-300">
+                            Problem It Solves
+                        </label>
+                        <AIFormatButton 
+                            field="problem_solves" 
+                            text={formData.problem_solves}
+                            onFormat={(text) => setFormData({ ...formData, problem_solves: text })}
+                        />
+                    </div>
                     <textarea
                         id="problem_solves"
                         rows={4}
@@ -411,9 +498,16 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
 
                 {/* Target audience */}
                 <div className="mb-4">
-                    <label htmlFor="target_audience" className="block text-sm font-medium text-silver-300 mb-2">
-                        Target Audience
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="target_audience" className="block text-sm font-medium text-silver-300">
+                            Target Audience
+                        </label>
+                        <AIFormatButton 
+                            field="target_audience" 
+                            text={formData.target_audience}
+                            onFormat={(text) => setFormData({ ...formData, target_audience: text })}
+                        />
+                    </div>
                     <textarea
                         id="target_audience"
                         rows={3}
@@ -426,9 +520,16 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
 
                 {/* Build details */}
                 <div className="mb-4">
-                    <label htmlFor="build_details" className="block text-sm font-medium text-silver-300 mb-2">
-                        Build Details / Tech Stack
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="build_details" className="block text-sm font-medium text-silver-300">
+                            Build Details / Tech Stack
+                        </label>
+                        <AIFormatButton 
+                            field="build_details" 
+                            text={formData.build_details}
+                            onFormat={(text) => setFormData({ ...formData, build_details: text })}
+                        />
+                    </div>
                     <textarea
                         id="build_details"
                         rows={3}
