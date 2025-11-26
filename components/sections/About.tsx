@@ -32,7 +32,7 @@ export default function About() {
                     <div className="prose prose-invert max-w-none">
                         <div className="space-y-4 mb-8">
                             <p className="text-xl text-white leading-relaxed">
-                                <span className="text-[var(--electric-blue)] font-semibold">We care for patients</span> — because we're nurses first.
+                                <span className="text-[var(--electric-blue)] font-semibold">We care for patients</span> — because we&apos;re nurses first.
                             </p>
                             <p className="text-xl text-white leading-relaxed">
                                 <span className="text-[var(--electric-blue)] font-semibold">We fix problems</span> — because we refuse to tolerate broken systems.
@@ -55,13 +55,13 @@ export default function About() {
                             <div>
                                 <h4 className="text-white font-semibold mb-2">Problem Solving</h4>
                                 <p className="text-sm text-silver-400">
-                                    Building SaaS tools that fix what's broken in healthcare systems.
+                                    Building SaaS tools that fix what&apos;s broken in healthcare systems.
                                 </p>
                             </div>
                             <div>
                                 <h4 className="text-white font-semibold mb-2">Innovation</h4>
                                 <p className="text-sm text-silver-400">
-                                    Creating solutions across health and beyond — because good ideas don't wait.
+                                    Creating solutions across health and beyond — because good ideas don&apos;t wait.
                                 </p>
                             </div>
                         </div>
