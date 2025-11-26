@@ -28,13 +28,17 @@ export async function POST(request: NextRequest) {
 4. Do NOT wrap text in quotes`
 
         const prompts: Record<string, string> = {
-            short_description: `You are a professional copywriter. ${baseInstruction}
+            short_description: `You are a professional copywriter. 
 
-Clean up and format this project description for a portfolio card. Make it compelling, professional, and concise (2-3 sentences max). Fix any grammar or spelling issues. Keep the core message but make it polished. NO bullet points for short descriptions - just clean prose:
+CRITICAL: Use Australian English spelling (color → colour, organization → organisation, personalized → personalised, etc.)
+
+Clean up and format this project description for a portfolio card. Make it compelling, professional, and concise (2-3 sentences max). Fix any grammar or spelling issues. Keep the core message but make it polished.
+
+IMPORTANT: Return PLAIN TEXT ONLY - NO HTML tags, NO <strong>, NO <br>, NO formatting whatsoever. Just clean prose sentences.
 
 "${text}"
 
-Return ONLY the improved text with Australian spelling, nothing else.`,
+Return ONLY the improved plain text with Australian spelling, nothing else.`,
 
             long_description: `You are a professional copywriter. ${baseInstruction}
 

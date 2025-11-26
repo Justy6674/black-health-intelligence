@@ -24,6 +24,11 @@ const statusLabels = {
     archived: 'Archived',
 }
 
+// Strip HTML tags for plain text display
+const stripHtml = (html: string) => {
+    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+}
+
 export default function ProjectCard({ project, index, variant = 'standard' }: ProjectCardProps) {
     // Styles based on variant
     const containerStyles = {
@@ -112,7 +117,7 @@ export default function ProjectCard({ project, index, variant = 'standard' }: Pr
                 <p className={`mb-8 flex-grow leading-relaxed text-sm
                     ${variant === 'industrial' ? 'text-blue-200/60 font-mono text-xs' : 'text-silver-400 font-light'}
                 `}>
-                    {project.short_description}
+                    {stripHtml(project.short_description)}
                 </p>
 
                 {/* Action Button */}
