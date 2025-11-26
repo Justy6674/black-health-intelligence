@@ -11,6 +11,27 @@ interface ProjectListProps {
     initialProjects: Project[]
 }
 
+// Helper to get display category name
+function getCategoryDisplay(project: Project): string {
+    if (project.category === 'clinical') return '🏥 Clinical'
+    if (project.category === 'partner-solutions') return '🤝 Partner'
+    if (project.category === 'health-saas') {
+        if (project.subcategory === 'health-saas') return '💊 Health SaaS'
+        if (project.subcategory === 'non-health-saas') return '🚀 Non-Health SaaS'
+        return '⚠️ Health SaaS (no sub)'
+    }
+    return '📦 Other'
+}
+
+// Helper to get section key for grouping
+function getSectionKey(project: Project): string {
+    if (project.category === 'clinical') return 'clinical'
+    if (project.category === 'partner-solutions') return 'partner'
+    if (project.category === 'health-saas' && project.subcategory === 'health-saas') return 'health-saas'
+    if (project.category === 'health-saas' && project.subcategory === 'non-health-saas') return 'non-health-saas'
+    return 'other'
+}
+
 export default function ProjectList({ initialProjects }: ProjectListProps) {
     const [projects, setProjects] = useState(initialProjects)
     const [isSaving, setIsSaving] = useState(false)
@@ -45,6 +66,25 @@ export default function ProjectList({ initialProjects }: ProjectListProps) {
         }
     }
 
+    // Group projects by section and calculate position within each section
+    const projectPositions = new Map<string, number>()
+    const sectionCounts = new Map<string, number>()
+    
+    // First pass: count projects per section
+    projects.forEach(project => {
+        const section = getSectionKey(project)
+        sectionCounts.set(section, (sectionCounts.get(section) || 0) + 1)
+    })
+    
+    // Second pass: assign positions within each section
+    const sectionCurrentPos = new Map<string, number>()
+    projects.forEach(project => {
+        const section = getSectionKey(project)
+        const pos = (sectionCurrentPos.get(section) || 0) + 1
+        sectionCurrentPos.set(section, pos)
+        projectPositions.set(project.id, pos)
+    })
+
     return (
         <div className="space-y-6">
             {hasChanges && (
@@ -73,7 +113,12 @@ export default function ProjectList({ initialProjects }: ProjectListProps) {
 
                 <Reorder.Group axis="y" values={projects} onReorder={handleReorder} className="divide-y divide-silver-700/30">
                     {projects.map((project) => (
-                        <ProjectItem key={project.id} project={project} />
+                        <ProjectItem 
+                            key={project.id} 
+                            project={project} 
+                            position={projectPositions.get(project.id) || 0}
+                            totalInSection={sectionCounts.get(getSectionKey(project)) || 0}
+                        />
                     ))}
                 </Reorder.Group>
                 
@@ -87,22 +132,24 @@ export default function ProjectList({ initialProjects }: ProjectListProps) {
     )
 }
 
-function ProjectItem({ project }: { project: Project }) {
+function ProjectItem({ project, position, totalInSection }: { project: Project; position: number; totalInSection: number }) {
     const controls = useDragControls()
+    const categoryDisplay = getCategoryDisplay(project)
+    const hasSubcategoryIssue = project.category === 'health-saas' && !project.subcategory
 
     return (
         <Reorder.Item
             value={project}
             dragListener={false}
             dragControls={controls}
-            className="bg-charcoal hover:bg-charcoal/50 transition-colors"
+            className={`bg-charcoal hover:bg-charcoal/50 transition-colors ${hasSubcategoryIssue ? 'border-l-4 border-yellow-500' : ''}`}
         >
             <div className="px-6 py-4 grid grid-cols-12 gap-4 items-center">
                 <div className="col-span-1 flex items-center gap-3 cursor-grab active:cursor-grabbing" onPointerDown={(e) => controls.start(e)}>
                      <svg className="w-5 h-5 text-silver-600 hover:text-silver-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
                     </svg>
-                    <span className="text-sm text-silver-500">{project.display_order}</span>
+                    <span className="text-sm text-white font-medium">{position}<span className="text-silver-600">/{totalInSection}</span></span>
                 </div>
                 <div className="col-span-4 min-w-0">
                     <div className="text-sm font-medium text-white truncate">{project.name}</div>
@@ -110,8 +157,13 @@ function ProjectItem({ project }: { project: Project }) {
                         {project.short_description}
                     </div>
                 </div>
-                <div className="col-span-3 text-sm text-silver-300 capitalize">
-                    {project.category.replace('-', ' ')}
+                <div className="col-span-3">
+                    <span className={`text-sm ${hasSubcategoryIssue ? 'text-yellow-400' : 'text-silver-300'}`}>
+                        {categoryDisplay}
+                    </span>
+                    {hasSubcategoryIssue && (
+                        <div className="text-xs text-yellow-500 mt-0.5">⚠️ Won&apos;t show - needs edit</div>
+                    )}
                 </div>
                 <div className="col-span-2">
                     <span className={`inline-block px-2 py-1 text-xs rounded-full ${
