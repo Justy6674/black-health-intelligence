@@ -11,8 +11,8 @@ export const metadata: Metadata = {
     description: 'Explore our portfolio of healthcare and technology projects - clinical practice, health SaaS, and non-health SaaS solutions.',
 }
 
-// Cache for 60 seconds instead of no cache
-export const revalidate = 60
+// No caching to ensure fresh content
+export const revalidate = 0
 
 // Helper to attach tags to projects
 async function attachTagsToProjects(supabase: any, projects: Project[]): Promise<Project[]> {
