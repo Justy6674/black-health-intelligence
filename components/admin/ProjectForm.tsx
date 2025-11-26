@@ -372,43 +372,38 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                     />
                 </div>
 
-                {/* Category */}
+                {/* Portfolio Section - Simplified */}
                 <div className="mb-4">
-                    <label htmlFor="category" className="block text-sm font-medium text-silver-300 mb-2">
-                        Category *
+                    <label htmlFor="portfolio_section" className="block text-sm font-medium text-silver-300 mb-2">
+                        Portfolio Section * (where it appears on the site)
                     </label>
                     <select
-                        id="category"
+                        id="portfolio_section"
                         required
-                        value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value as ProjectCategory, subcategory: undefined })}
+                        value={formData.category === 'clinical' ? 'clinical' : `${formData.category}-${formData.subcategory || ''}`}
+                        onChange={(e) => {
+                            const val = e.target.value
+                            if (val === 'clinical') {
+                                setFormData({ ...formData, category: 'clinical' as ProjectCategory, subcategory: undefined })
+                            } else if (val === 'health-saas-health-saas') {
+                                setFormData({ ...formData, category: 'health-saas' as ProjectCategory, subcategory: 'health-saas' as ProjectSubcategory })
+                            } else if (val === 'health-saas-non-health-saas') {
+                                setFormData({ ...formData, category: 'health-saas' as ProjectCategory, subcategory: 'non-health-saas' as ProjectSubcategory })
+                            } else {
+                                setFormData({ ...formData, category: 'other' as ProjectCategory, subcategory: undefined })
+                            }
+                        }}
                         className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
                     >
-                        <option value="clinical">Clinical Practice</option>
-                        <option value="health-saas">Health SaaS</option>
-                        <option value="other">Other Ventures</option>
+                        <option value="clinical">🏥 Clinical Site (Downscale, etc.)</option>
+                        <option value="health-saas-health-saas">💊 Health-Related SaaS (TeleCheck, etc.)</option>
+                        <option value="health-saas-non-health-saas">🚀 Non-Health SaaS (ScentSwap, etc.)</option>
+                        <option value="other">📦 Other Ventures</option>
                     </select>
+                    <p className="text-xs text-silver-500 mt-1">
+                        This determines which section your project appears in on the Portfolio page.
+                    </p>
                 </div>
-
-                {/* Subcategory (only for health-saas) */}
-                {formData.category === 'health-saas' && (
-                    <div className="mb-4">
-                        <label htmlFor="subcategory" className="block text-sm font-medium text-silver-300 mb-2">
-                            Subcategory *
-                        </label>
-                        <select
-                            id="subcategory"
-                            required
-                            value={formData.subcategory || ''}
-                            onChange={(e) => setFormData({ ...formData, subcategory: e.target.value as ProjectSubcategory })}
-                            className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                        >
-                            <option value="">Select subcategory</option>
-                            <option value="health-saas">Health-Related SaaS</option>
-                            <option value="non-health-saas">Non-Health-Related SaaS</option>
-                        </select>
-                    </div>
-                )}
 
                 {/* Short description */}
                 <div className="mb-4">
