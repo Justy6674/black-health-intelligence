@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { useState } from 'react'
+import Link from 'next/link'
 
 export default function AdminLayout({
     children,
@@ -21,7 +22,7 @@ export default function AdminLayout({
     const handleLogout = async () => {
         if (!supabase) return
         await supabase.auth.signOut()
-        router.push('/admin/login')
+        router.push('/')
         router.refresh()
     }
 
@@ -30,9 +31,16 @@ export default function AdminLayout({
             {/* Admin header */}
             <header className="bg-charcoal border-b border-silver-700/30">
                 <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div>
-                        <h1 className="text-xl font-bold text-gradient">Black Health Intelligence</h1>
-                        <p className="text-sm text-silver-500">Admin Dashboard</p>
+                    <div className="flex items-center gap-4">
+                        <Link href="/" className="text-silver-400 hover:text-white transition-colors">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                        </Link>
+                        <div>
+                            <h1 className="text-xl font-bold text-gradient">Black Health Intelligence</h1>
+                            <p className="text-sm text-silver-500">Admin Dashboard</p>
+                        </div>
                     </div>
                     <button
                         onClick={handleLogout}
