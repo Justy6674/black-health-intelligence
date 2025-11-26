@@ -10,6 +10,9 @@ export const size = {
 export const contentType = 'image/png'
 
 export default async function Image() {
+    // Fetch the logo from the public folder
+    const logoUrl = 'https://blackhealthintelligence.com/LOGO.png'
+    
     return new ImageResponse(
         (
             <div
@@ -47,30 +50,17 @@ export default async function Image() {
                         padding: '40px',
                     }}
                 >
-                    {/* Logo placeholder - B letter */}
-                    <div
+                    {/* Actual Logo */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src={logoUrl}
+                        alt="Black Health Intelligence Logo"
+                        width={150}
+                        height={150}
                         style={{
-                            width: 120,
-                            height: 120,
-                            borderRadius: 20,
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                            border: '2px solid rgba(255, 255, 255, 0.2)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
                             marginBottom: 30,
                         }}
-                    >
-                        <span
-                            style={{
-                                fontSize: 72,
-                                fontWeight: 700,
-                                color: '#0ea5e9',
-                            }}
-                        >
-                            B
-                        </span>
-                    </div>
+                    />
 
                     {/* Title */}
                     <div
