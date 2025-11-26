@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
         await resend.emails.send({
             from: `Contact Form <${OFFICE_EMAIL}>`,
             to: [OFFICE_EMAIL],
-            reply_to: email,
+            replyTo: email,
             subject: `New Contact Form Submission from ${name}`,
             html: `
                 <h2>New Contact Form Submission</h2>

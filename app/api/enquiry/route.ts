@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify({
                 from: 'Black Health Intelligence <noreply@blackhealthintelligence.com>',
                 to: ['office@blackhealthintelligence.com'],
-                reply_to: email,
+                replyTo: email,
                 subject: `Project Enquiry: ${projectName}`,
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
