@@ -172,12 +172,12 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                 </div>
                             )}
 
-                            {/* Detailed Content Sections - Only show if there's substantial content */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                                {/* Target Audience - only if has content */}
+                            {/* Detailed Content Sections - Full width stacked, no dead space */}
+                            <div className="space-y-4 mb-8">
+                                {/* Target Audience - full width */}
                                 {project.target_audience && project.target_audience.trim().length > 0 && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Target Audience</h3>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-5">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-3">Target Audience</h3>
                                         <div 
                                             className="text-white/90 text-sm leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:text-white"
                                             dangerouslySetInnerHTML={{ __html: project.target_audience }}
@@ -185,10 +185,10 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                     </div>
                                 )}
 
-                                {/* Build Details - only if has content */}
+                                {/* Build Details - full width */}
                                 {project.build_details && project.build_details.trim().length > 0 && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Build Details</h3>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-5">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-3">Build Details</h3>
                                         <div 
                                             className="text-white/90 leading-relaxed font-mono text-xs prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:text-white"
                                             dangerouslySetInnerHTML={{ __html: project.build_details }}
@@ -196,10 +196,10 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                     </div>
                                 )}
 
-                                {/* Revenue Stream - only show as tile if it's long content */}
+                                {/* Revenue Stream - full width, only if long content */}
                                 {project.revenue_stream && project.revenue_stream.length >= 50 && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Revenue Stream</h3>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-5">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-3">Revenue Stream</h3>
                                         <div 
                                             className="text-white/90 text-sm leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:text-white"
                                             dangerouslySetInnerHTML={{ __html: project.revenue_stream }}
