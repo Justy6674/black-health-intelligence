@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { Project, HighlightEffect, BadgeColor } from '@/lib/types'
-import ProjectCard from '@/components/ui/ProjectCard'
 import ProjectDetailModal from '@/components/ui/ProjectDetailModal'
 import Image from 'next/image'
 
@@ -32,6 +31,53 @@ const getEffectClass = (effect: HighlightEffect) => {
     }
 }
 
+// Reusable full-width project card component
+function FullWidthProjectCard({ project, onClick }: { project: Project; onClick: () => void }) {
+    return (
+        <div 
+            onClick={onClick}
+            className="cursor-pointer group"
+        >
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 hover:border-white/20 hover:bg-white/10 transition-all duration-300 backdrop-blur-md">
+                <div className="flex flex-col md:flex-row items-center gap-8">
+                    {project.logo_url ? (
+                        <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-4 group-hover:scale-105 transition-transform flex-shrink-0">
+                            <Image
+                                src={project.logo_url}
+                                alt={`${project.name} logo`}
+                                width={128}
+                                height={128}
+                                className="object-contain"
+                            />
+                        </div>
+                    ) : (
+                        <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-4 group-hover:scale-105 transition-transform flex-shrink-0">
+                            <span className="text-4xl font-bold text-white/20">{project.name.charAt(0)}</span>
+                        </div>
+                    )}
+                    <div className="flex-1 text-center md:text-left">
+                        <h3 className="text-2xl md:text-3xl font-bold text-white mb-4">{project.name}</h3>
+                        <p className="text-white/70 text-base md:text-lg leading-relaxed">{project.short_description}</p>
+                    </div>
+                </div>
+                
+                {/* Custom Badges - Bottom Right of Card */}
+                {project.custom_badges && project.custom_badges.length > 0 && (
+                    <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap justify-end gap-2">
+                        {project.custom_badges.map((badge) => (
+                            <span 
+                                key={badge.id}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold tracking-widest uppercase border rounded-full ${getCustomBadgeColor(badge.color)} ${getEffectClass(badge.effect)}`}
+                            >
+                                {badge.text}
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
 
 export default function PlatformPageClient({ 
     clinicalProject, 
@@ -55,62 +101,23 @@ export default function PlatformPageClient({
             <div className="pt-32 pb-20 relative z-10 section-container">
                 {/* Clinical Site Section */}
                 {clinicalProject && (
-                    <section className="mb-24">
-                        <h2 className="heading-chrome text-3xl md:text-4xl mb-8">Clinical Site</h2>
-                        <div 
-                            onClick={() => handleCardClick(clinicalProject)}
-                            className="cursor-pointer group"
-                        >
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-12 hover:border-white/20 hover:bg-white/10 transition-all duration-300 backdrop-blur-md">
-                                <div className="flex flex-col md:flex-row items-center gap-8">
-                                    {clinicalProject.logo_url && (
-                                        <div className="w-32 h-32 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-4 group-hover:scale-105 transition-transform">
-                                            <Image
-                                                src={clinicalProject.logo_url}
-                                                alt={`${clinicalProject.name} logo`}
-                                                width={128}
-                                                height={128}
-                                                className="object-contain"
-                                            />
-                                        </div>
-                                    )}
-                                    <div className="flex-1 text-center md:text-left">
-                                        <h3 className="text-3xl font-bold text-white mb-4">{clinicalProject.name}</h3>
-                                        <p className="text-white/70 text-lg leading-relaxed">{clinicalProject.short_description}</p>
-                                    </div>
-                                </div>
-                                
-                                {/* Custom Badges - Bottom Right of Card */}
-                                {clinicalProject.custom_badges && clinicalProject.custom_badges.length > 0 && (
-                                    <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap justify-end gap-2">
-                                        {clinicalProject.custom_badges.map((badge) => (
-                                            <span 
-                                                key={badge.id}
-                                                className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold tracking-widest uppercase border rounded-full ${getCustomBadgeColor(badge.color)} ${getEffectClass(badge.effect)}`}
-                                            >
-                                                {badge.text}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                    <section className="mb-20">
+                        <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Clinical Site</h2>
+                        <FullWidthProjectCard project={clinicalProject} onClick={() => handleCardClick(clinicalProject)} />
                     </section>
                 )}
 
                 {/* Health-Related SaaS Section */}
                 {healthSaasProjects.length > 0 && (
-                    <section className="mb-24">
-                        <h2 className="heading-chrome text-3xl md:text-4xl mb-8">Health-Related SaaS</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                            {healthSaasProjects.map((project, index) => (
-                                <div key={project.id} onClick={() => handleCardClick(project)} className="cursor-pointer">
-                                    <ProjectCard 
-                                        project={project} 
-                                        index={index} 
-                                        variant="artistic"
-                                    />
-                                </div>
+                    <section className="mb-20">
+                        <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Health-Related SaaS</h2>
+                        <div className="space-y-6">
+                            {healthSaasProjects.map((project) => (
+                                <FullWidthProjectCard 
+                                    key={project.id} 
+                                    project={project} 
+                                    onClick={() => handleCardClick(project)} 
+                                />
                             ))}
                         </div>
                     </section>
@@ -118,17 +125,15 @@ export default function PlatformPageClient({
 
                 {/* Non-Health-Related SaaS Section */}
                 {nonHealthSaasProjects.length > 0 && (
-                    <section className="mb-24">
-                        <h2 className="heading-chrome text-3xl md:text-4xl mb-8">Non-Health-Related SaaS</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                            {nonHealthSaasProjects.map((project, index) => (
-                                <div key={project.id} onClick={() => handleCardClick(project)} className="cursor-pointer">
-                                    <ProjectCard 
-                                        project={project} 
-                                        index={index} 
-                                        variant="artistic"
-                                    />
-                                </div>
+                    <section className="mb-20">
+                        <h2 className="heading-chrome text-4xl md:text-5xl lg:text-6xl mb-10 tracking-tight">Non-Health-Related SaaS</h2>
+                        <div className="space-y-6">
+                            {nonHealthSaasProjects.map((project) => (
+                                <FullWidthProjectCard 
+                                    key={project.id} 
+                                    project={project} 
+                                    onClick={() => handleCardClick(project)} 
+                                />
                             ))}
                         </div>
                     </section>
