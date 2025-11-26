@@ -40,6 +40,26 @@ export interface SiteSetting {
     updated_at: string
 }
 
+// Tag system
+export type TagCategory = 'tech_stack' | 'build_phase' | 'business_model' | 'project_type'
+
+export interface Tag {
+    id: string
+    name: string
+    category: TagCategory
+    created_at: string
+}
+
+export interface ProjectTag {
+    project_id: string
+    tag_id: string
+}
+
+// Extended project with tags
+export interface ProjectWithTags extends Project {
+    tags?: Tag[]
+}
+
 export type ProjectCategory = Project['category']
 export type ProjectStatus = Project['status']
 export type ProjectSubcategory = Project['subcategory']

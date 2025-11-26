@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
-import { Project } from '@/lib/types'
+import { Project, Tag, TagCategory } from '@/lib/types'
 import { X } from 'lucide-react'
 import EnquiryModal from '@/components/modals/EnquiryModal'
+import { createBrowserClient } from '@supabase/ssr'
 
 interface ProjectDetailModalProps {
     project: Project | null
@@ -13,8 +14,56 @@ interface ProjectDetailModalProps {
     onClose: () => void
 }
 
+const categoryLabels: Record<TagCategory, string> = {
+    tech_stack: 'Tech Stack',
+    build_phase: 'Build Phase',
+    business_model: 'Business Model',
+    project_type: 'Project Type',
+}
+
+const categoryColors: Record<TagCategory, string> = {
+    tech_stack: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    build_phase: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    business_model: 'bg-green-500/20 text-green-400 border-green-500/30',
+    project_type: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+}
+
 export default function ProjectDetailModal({ project, isOpen, onClose }: ProjectDetailModalProps) {
     const [enquiryOpen, setEnquiryOpen] = useState(false)
+    const [tags, setTags] = useState<Tag[]>([])
+    
+    const [supabase] = useState(() => {
+        if (typeof window === 'undefined') return null
+        return createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
+    })
+
+    useEffect(() => {
+        if (!supabase || !project?.id || !isOpen) return
+        
+        const fetchTags = async () => {
+            const { data } = await supabase
+                .from('project_tags')
+                .select('tag_id, tags(*)')
+                .eq('project_id', project.id)
+            
+            if (data) {
+                const projectTags = data.map((pt: any) => pt.tags).filter(Boolean)
+                setTags(projectTags)
+            }
+        }
+        
+        fetchTags()
+    }, [supabase, project?.id, isOpen])
+
+    // Group tags by category
+    const tagsByCategory = tags.reduce((acc, tag) => {
+        if (!acc[tag.category]) acc[tag.category] = []
+        acc[tag.category].push(tag)
+        return acc
+    }, {} as Record<TagCategory, Tag[]>)
     
     if (!project) return null
 
@@ -66,25 +115,47 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
                                 </div>
                             </div>
 
-                            {/* Details Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                                {/* Problem It Solves */}
-                                {project.problem_solves && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                                        <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Problem It Solves</h3>
-                                        <div 
-                                            className="text-white/90 leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
-                                            dangerouslySetInnerHTML={{ __html: project.problem_solves }}
-                                        />
+                            {/* Project Tags */}
+                            {tags.length > 0 && (
+                                <div className="mb-8 bg-white/5 border border-white/10 rounded-lg p-6">
+                                    <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-4">Project Tags</h3>
+                                    <div className="space-y-3">
+                                        {(Object.keys(tagsByCategory) as TagCategory[]).map(category => (
+                                            <div key={category} className="flex flex-wrap items-center gap-2">
+                                                <span className="text-xs text-white/40 w-24 shrink-0">{categoryLabels[category]}:</span>
+                                                {tagsByCategory[category].map(tag => (
+                                                    <span 
+                                                        key={tag.id}
+                                                        className={`px-2.5 py-1 text-xs font-medium rounded-full border ${categoryColors[category]}`}
+                                                    >
+                                                        {tag.name}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ))}
                                     </div>
-                                )}
+                                </div>
+                            )}
 
+                            {/* Problem It Solves - Full Width */}
+                            {project.problem_solves && (
+                                <div className="mb-8 bg-white/5 border border-white/10 rounded-lg p-6">
+                                    <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Problem It Solves</h3>
+                                    <div 
+                                        className="text-white/90 leading-relaxed prose prose-invert max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                        dangerouslySetInnerHTML={{ __html: project.problem_solves }}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Details Grid - Smaller boxes */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                                 {/* Target Audience */}
                                 {project.target_audience && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                                        <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Target Audience</h3>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Target Audience</h3>
                                         <div 
-                                            className="text-white/90 leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                            className="text-white/90 text-sm leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:text-white"
                                             dangerouslySetInnerHTML={{ __html: project.target_audience }}
                                         />
                                     </div>
@@ -92,48 +163,29 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
 
                                 {/* Build Details */}
                                 {project.build_details && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                                        <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Build Details</h3>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Build Details</h3>
                                         <div 
-                                            className="text-white/90 leading-relaxed font-mono text-sm prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                            className="text-white/90 leading-relaxed font-mono text-xs prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:text-white"
                                             dangerouslySetInnerHTML={{ __html: project.build_details }}
                                         />
                                     </div>
                                 )}
 
-                                {/* Development Phase */}
-                                {project.development_phase && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                                        <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Development Phase</h3>
-                                        <span className="inline-block px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded text-sm font-medium uppercase">
-                                            {{
-                                                'concept': 'Concept',
-                                                'mvp': 'MVP',
-                                                'beta': 'Beta',
-                                                'production': 'Production',
-                                                'early-stage': 'Early Stage (0-12 months)',
-                                                'growth': 'Growth Phase',
-                                                'scaling': 'Scaling',
-                                                'established': 'Established'
-                                            }[project.development_phase] || project.development_phase}
-                                        </span>
-                                    </div>
-                                )}
-
                                 {/* Estimated Release */}
                                 {project.estimated_release && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                                        <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Estimated Release</h3>
-                                        <p className="text-white/90 text-lg font-semibold">{new Date(project.estimated_release).toLocaleDateString('en-AU', { year: 'numeric', month: 'long' })}</p>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Estimated Release</h3>
+                                        <p className="text-white/90 font-semibold">{new Date(project.estimated_release).toLocaleDateString('en-AU', { year: 'numeric', month: 'long' })}</p>
                                     </div>
                                 )}
 
                                 {/* Revenue Stream */}
                                 {project.revenue_stream && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                                        <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Revenue Stream</h3>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Revenue Stream</h3>
                                         <div 
-                                            className="text-white/90 leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1 [&_strong]:text-white"
+                                            className="text-white/90 text-sm leading-relaxed prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:text-white"
                                             dangerouslySetInnerHTML={{ __html: project.revenue_stream }}
                                         />
                                     </div>
@@ -141,9 +193,9 @@ export default function ProjectDetailModal({ project, isOpen, onClose }: Project
 
                                 {/* Market Scope */}
                                 {project.market_scope && (
-                                    <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                                        <h3 className="text-sm font-bold tracking-widest uppercase text-white/60 mb-3">Market Scope</h3>
-                                        <p className="text-white/90 text-lg font-semibold">{project.market_scope}</p>
+                                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                                        <h3 className="text-xs font-bold tracking-widest uppercase text-white/60 mb-2">Market Scope</h3>
+                                        <p className="text-white/90 font-semibold">{project.market_scope}</p>
                                     </div>
                                 )}
                             </div>

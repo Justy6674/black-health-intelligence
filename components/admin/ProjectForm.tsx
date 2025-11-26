@@ -1,12 +1,13 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { useDropzone } from 'react-dropzone'
 import Image from 'next/image'
-import { ProjectCategory, ProjectStatus, ProjectSubcategory, MarketScope, DevelopmentPhase } from '@/lib/types'
+import { ProjectCategory, ProjectStatus, ProjectSubcategory, MarketScope, Tag } from '@/lib/types'
+import TagSelector from './TagSelector'
 
 // Define component props and inner form component separately to wrap in Suspense
 interface ProjectFormProps {
@@ -32,7 +33,7 @@ interface ProjectFormProps {
         for_sale?: boolean
         sale_price?: number
         investment_opportunity?: boolean
-        development_phase?: DevelopmentPhase
+        tags?: Tag[]
     }>
 }
 
@@ -134,13 +135,31 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
         for_sale: initialData?.for_sale || false,
         sale_price: initialData?.sale_price || '',
         investment_opportunity: initialData?.investment_opportunity || false,
-        development_phase: initialData?.development_phase || undefined,
     })
 
+    const [selectedTags, setSelectedTags] = useState<Tag[]>(initialData?.tags || [])
     const [logoFile, setLogoFile] = useState<File | null>(null)
     const [logoPreview, setLogoPreview] = useState<string>(initialData?.logo_url || '')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+
+    // Load existing tags for edit mode
+    useEffect(() => {
+        if (mode === 'edit' && initialData?.id && supabase) {
+            const loadTags = async () => {
+                const { data } = await supabase
+                    .from('project_tags')
+                    .select('tag_id, tags(*)')
+                    .eq('project_id', initialData.id)
+                
+                if (data) {
+                    const tags = data.map((pt: any) => pt.tags).filter(Boolean)
+                    setSelectedTags(tags)
+                }
+            }
+            loadTags()
+        }
+    }, [mode, initialData?.id, supabase])
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const file = acceptedFiles[0]
@@ -206,12 +225,17 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                 }
             })
 
+            let projectId = initialData?.id
+
             if (mode === 'create') {
-                const { error: insertError } = await supabase
+                const { data: newProject, error: insertError } = await supabase
                     .from('projects')
                     .insert([projectData])
+                    .select('id')
+                    .single()
 
                 if (insertError) throw insertError
+                projectId = newProject.id
             } else {
                 const { error: updateError } = await supabase
                     .from('projects')
@@ -219,6 +243,29 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                     .eq('id', initialData?.id)
 
                 if (updateError) throw updateError
+            }
+
+            // Save tags
+            if (projectId) {
+                // Delete existing tags
+                await supabase
+                    .from('project_tags')
+                    .delete()
+                    .eq('project_id', projectId)
+
+                // Insert new tags
+                if (selectedTags.length > 0) {
+                    const tagInserts = selectedTags.map(tag => ({
+                        project_id: projectId,
+                        tag_id: tag.id
+                    }))
+                    
+                    const { error: tagError } = await supabase
+                        .from('project_tags')
+                        .insert(tagInserts)
+                    
+                    if (tagError) console.error('Error saving tags:', tagError)
+                }
             }
 
             router.push('/admin/projects')
@@ -421,33 +468,6 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                     </select>
                 </div>
 
-                {/* Development Phase */}
-                <div className="mb-4">
-                    <label htmlFor="development_phase" className="block text-sm font-medium text-silver-300 mb-2">
-                        Development Phase
-                    </label>
-                    <select
-                        id="development_phase"
-                        value={formData.development_phase || ''}
-                        onChange={(e) => setFormData({ ...formData, development_phase: e.target.value as DevelopmentPhase || undefined })}
-                        className="w-full px-4 py-3 bg-charcoal border border-silver-700/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-slate-blue focus:border-transparent"
-                    >
-                        <option value="">Select phase</option>
-                        <optgroup label="Software / SaaS">
-                            <option value="concept">Concept</option>
-                            <option value="mvp">MVP</option>
-                            <option value="beta">Beta</option>
-                            <option value="production">Production</option>
-                        </optgroup>
-                        <optgroup label="Clinical / Business">
-                            <option value="early-stage">Early Stage (0-12 months)</option>
-                            <option value="growth">Growth (Exploring expansion)</option>
-                            <option value="scaling">Scaling (Adding team/contractors)</option>
-                            <option value="established">Established</option>
-                        </optgroup>
-                    </select>
-                </div>
-
                 {/* Display order */}
                 <div className="mb-4">
                     <label htmlFor="display_order" className="block text-sm font-medium text-silver-300 mb-2">
@@ -476,6 +496,16 @@ function ProjectFormContent({ mode, initialData }: ProjectFormProps) {
                         Featured project
                     </label>
                 </div>
+            </div>
+
+            {/* Project Tags Section */}
+            <div className="border-b border-white/10 pb-6">
+                <h2 className="text-xl font-bold text-white mb-2">Project Tags</h2>
+                <p className="text-sm text-silver-500 mb-4">Select multiple tags to describe your project. You can add custom tags in each category.</p>
+                <TagSelector 
+                    selectedTags={selectedTags}
+                    onTagsChange={setSelectedTags}
+                />
             </div>
 
             {/* Business Details Section */}
