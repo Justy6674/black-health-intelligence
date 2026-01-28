@@ -43,6 +43,16 @@ export default function Footer() {
                 <div className="pt-8 border-t border-white/10 text-center">
                     <p className="text-silver-500 text-sm">
                         © {currentYear} Black Health Intelligence PTY LTD. All rights reserved.
+                        <span className="mx-2">·</span>
+                        <a
+                            href="/JBResume.pdf"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-[var(--electric-blue)] transition-colors"
+                            aria-label="Founder's CV (opens in new tab)"
+                        >
+                            Founder
+                        </a>
                     </p>
                 </div>
             </div>
