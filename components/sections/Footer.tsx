@@ -49,9 +49,9 @@ export default function Footer() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="hover:text-[var(--electric-blue)] transition-colors"
-                            aria-label="Founder's CV (opens in new tab)"
+                            aria-label="JB-CV (opens in new tab)"
                         >
-                            Founder
+                            JB-CV
                         </a>
                     </p>
                 </div>
