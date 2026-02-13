@@ -9,12 +9,50 @@ const MAX_CUTOFF = '2026-01-01' // Do not allow cutoff after this without confir
 
 // ── CSV helpers ──
 
-function parseCSV(text: string): ParsedInvoice[] {
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
-  if (lines.length < 2) return []
+/** Quote-aware split by delimiter. Handles "field, with comma" correctly. */
+function splitLine(line: string, delim: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (const ch of line) {
+    if (ch === '"') {
+      inQuotes = !inQuotes
+    } else if (ch === delim && !inQuotes) {
+      result.push(current)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  result.push(current)
+  return result
+}
+
+type ParseResult = {
+  invoices: ParsedInvoice[]
+  parseMeta: {
+    delimiter: 'comma' | 'tab'
+    columnCount: number
+    numIdx: number
+    dateIdx: number
+    amtIdx: number
+    statusIdx: number
+  }
+}
+
+function parseCSV(text: string): ParseResult | { invoices: []; parseMeta: null } {
+  const raw = text.replace(/^\uFEFF/, '') // Strip UTF-8 BOM
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  if (lines.length < 2) return { invoices: [], parseMeta: null }
 
   const headerLine = lines[0]
-  const headers = headerLine.split(',').map((h) => h.replace(/"/g, '').trim().toLowerCase())
+  const byComma = splitLine(headerLine, ',').length
+  const byTab = splitLine(headerLine, '\t').length
+  const delimiter = byTab > byComma ? '\t' : ','
+
+  const headers = splitLine(headerLine, delimiter).map((h) =>
+    h.replace(/"/g, '').trim().toLowerCase()
+  )
 
   const numIdx = headers.findIndex(
     (h) =>
@@ -26,10 +64,9 @@ function parseCSV(text: string): ParsedInvoice[] {
       h === 'date' ||
       h === 'invoice date' ||
       h === 'due date' ||
-      (h.includes('invoice') && h.includes('date')) || // "invoice date", "invoicedate"
-      (h.includes('due') && h.includes('date')) // "due date"
+      (h.includes('invoice') && h.includes('date')) ||
+      (h.includes('due') && h.includes('date'))
   )
-  // Prefer "total" for invoice amount; "taxamount"/"amountdue" come before "total" in Xero exports
   const totalIdx = headers.findIndex((h) => h === 'total')
   const amtIdx =
     totalIdx >= 0
@@ -37,11 +74,11 @@ function parseCSV(text: string): ParsedInvoice[] {
       : headers.findIndex((h) => h.includes('total') || h.includes('amount'))
   const statusIdx = headers.findIndex((h) => h === 'status')
 
-  if (numIdx === -1) return []
+  if (numIdx === -1) return { invoices: [], parseMeta: null }
 
   const rowMap = new Map<string, { date: string; amount: number; status?: string }>()
   for (let i = 1; i < lines.length; i++) {
-    const cols = splitCSVLine(lines[i])
+    const cols = splitLine(lines[i], delimiter)
     const invoiceNumber = cols[numIdx]?.replace(/"/g, '').trim()
     if (!invoiceNumber) continue
     const date = cols[dateIdx]?.replace(/"/g, '').trim() ?? ''
@@ -54,30 +91,23 @@ function parseCSV(text: string): ParsedInvoice[] {
       rowMap.set(invoiceNumber, { date, amount, status })
     }
   }
-  return Array.from(rowMap.entries()).map(([invoiceNumber, { date, amount, status }]) => ({
+  const invoices = Array.from(rowMap.entries()).map(([invoiceNumber, { date, amount, status }]) => ({
     invoiceNumber,
     date,
     amount,
     status,
   }))
-}
-
-function splitCSVLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-  for (const ch of line) {
-    if (ch === '"') {
-      inQuotes = !inQuotes
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current)
-      current = ''
-    } else {
-      current += ch
-    }
+  return {
+    invoices,
+    parseMeta: {
+      delimiter: delimiter === '\t' ? 'tab' : 'comma',
+      columnCount: headers.length,
+      numIdx,
+      dateIdx,
+      amtIdx,
+      statusIdx,
+    },
   }
-  result.push(current)
-  return result
 }
 
 /** Parse date from AU/UK DD/MM/YYYY or ISO YYYY-MM-DD. new Date() mishandles DD/MM/YYYY. */
@@ -169,6 +199,7 @@ export default function BulkVoidPage() {
   const [xeroStatus, setXeroStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [xeroOrgName, setXeroOrgName] = useState<string | null>(null)
   const [xeroError, setXeroError] = useState<string | null>(null)
+  const [parseMeta, setParseMeta] = useState<ParseResult['parseMeta']>(null)
 
   // Strict filtering: date < cutoff, status = AUTHORISED/Awaiting Payment only
   const dateFiltered = allInvoices.filter((inv) => isBeforeCutoff(inv.date, cutoffDate))
@@ -215,18 +246,20 @@ export default function BulkVoidPage() {
     setError('')
     setHasDryRunThisSession(false)
     setConfirmationPhrase('')
+    setParseMeta(null)
     const file = e.target.files?.[0]
     if (!file) return
 
     const reader = new FileReader()
     reader.onload = (ev) => {
       const text = ev.target?.result as string
-      const parsed = parseCSV(text)
-      if (parsed.length === 0) {
+      const { invoices, parseMeta: meta } = parseCSV(text)
+      if (invoices.length === 0) {
         setError('Could not parse any invoices from the CSV. Ensure it has an "InvoiceNumber" column.')
         return
       }
-      setAllInvoices(parsed)
+      setAllInvoices(invoices)
+      setParseMeta(meta)
     }
     reader.readAsText(file)
   }, [])
@@ -408,7 +441,34 @@ export default function BulkVoidPage() {
               </div>
               <div className="text-xs text-silver-400 space-y-1">
                 {dateFiltered.length === 0 ? (
-                  <p>Try exporting a different date range from Xero, or adjust the cutoff date.</p>
+                  <>
+                    <p>Try exporting a different date range from Xero, or adjust the cutoff date.</p>
+                    <div className="mt-2 pt-2 border-t border-amber-600/20 font-mono text-[11px] space-y-2">
+                      {parseMeta && (
+                        <div>
+                          <div className="text-amber-300/80 mb-0.5">Parse debug:</div>
+                          <div className="text-silver-500">
+                            Delimiter: <strong className="text-silver-400">{parseMeta.delimiter}</strong>
+                            {' · '}Columns: {parseMeta.columnCount}
+                            {' · '}InvoiceNumber=col {parseMeta.numIdx}, Date=col {parseMeta.dateIdx}
+                            {parseMeta.statusIdx >= 0 && `, Status=col ${parseMeta.statusIdx}`}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-amber-300/80 mb-0.5">Sample dates from CSV:</div>
+                        {allInvoices.slice(0, 3).map((inv, i) => {
+                          const parsed = parseDateSafe(inv.date)
+                          const raw = inv.date ? `"${inv.date.slice(0, 40)}${inv.date.length > 40 ? '...' : ''}"` : '(empty)'
+                          return (
+                            <div key={i}>
+                              #{i + 1} {raw} → {parsed ? `${parsed.toLocaleDateString('en-AU')} ✓` : 'parse failed'}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <p>All invoices in range are already PAID, VOIDED, or DRAFT.</p>
                 )}
