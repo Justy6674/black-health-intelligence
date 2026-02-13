@@ -123,6 +123,10 @@ export default function BulkVoidPage() {
   const [confirmationPhrase, setConfirmationPhrase] = useState('')
   const [auditHistory, setAuditHistory] = useState<BulkVoidAuditEntry[]>([])
 
+  const [xeroStatus, setXeroStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const [xeroOrgName, setXeroOrgName] = useState<string | null>(null)
+  const [xeroError, setXeroError] = useState<string | null>(null)
+
   // Strict filtering: date < cutoff, status = AUTHORISED/Awaiting Payment only
   const dateFiltered = allInvoices.filter((inv) => isBeforeCutoff(inv.date, cutoffDate))
   const toVoid = dateFiltered.filter((inv) => isVoidableStatus(inv.status))
@@ -140,6 +144,28 @@ export default function BulkVoidPage() {
   useEffect(() => {
     setAuditHistory(loadAuditHistory())
   }, [result])
+
+  useEffect(() => {
+    setXeroStatus('loading')
+    fetch('/api/xero/health')
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; organisationName?: string; error?: string }) => {
+        if (data.ok && data.organisationName) {
+          setXeroStatus('ok')
+          setXeroOrgName(data.organisationName)
+          setXeroError(null)
+        } else {
+          setXeroStatus('error')
+          setXeroOrgName(null)
+          setXeroError(data.error ?? 'Check failed')
+        }
+      })
+      .catch(() => {
+        setXeroStatus('error')
+        setXeroOrgName(null)
+        setXeroError('Check failed')
+      })
+  }, [])
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setResult(null)
@@ -220,7 +246,7 @@ export default function BulkVoidPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link href="/admin" className="text-silver-400 hover:text-white transition-colors">
           ← Back
         </Link>
@@ -229,6 +255,24 @@ export default function BulkVoidPage() {
           <p className="text-silver-400 text-sm">
             Void Halaxy-origin invoices before 1 Jan 2026 in Xero (safe, reversible workflow)
           </p>
+        </div>
+        <div className="ml-auto">
+          {xeroStatus === 'loading' && (
+            <span className="text-sm text-silver-400">Xero: Checking…</span>
+          )}
+          {xeroStatus === 'ok' && (
+            <span className="inline-flex items-center gap-2 px-2 py-1 rounded text-sm text-green-400 bg-green-900/20 border border-green-600/30">
+              Xero: Connected ({xeroOrgName ?? 'OK'})
+            </span>
+          )}
+          {xeroStatus === 'error' && (
+            <span
+              className="inline-flex items-center gap-2 px-2 py-1 rounded text-sm text-amber-400 bg-amber-900/20 border border-amber-600/30"
+              title={xeroError ?? undefined}
+            >
+              Xero: {xeroError ?? 'Check failed'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -305,6 +349,25 @@ export default function BulkVoidPage() {
                 ))}
                 {skipped.length > 50 && (
                   <div className="text-silver-500">… and {skipped.length - 50} more</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {toVoid.length === 0 && allInvoices.length > 0 && (
+            <div className="mt-4 p-4 bg-amber-900/15 border border-amber-600/30 rounded">
+              <h3 className="text-sm font-medium text-amber-400 mb-3">Why 0 invoices?</h3>
+              <div className="text-sm text-silver-300 space-y-1 mb-3">
+                <div>• {allInvoices.length} invoices loaded from CSV</div>
+                <div>• {dateFiltered.length} have date before {cutoffDate} (in range)</div>
+                <div>• Of those: {toVoid.length} are voidable (AUTHORISED / Awaiting Payment)</div>
+                <div>• {skipped.length} skipped (PAID, VOIDED, or DRAFT — not safe to void)</div>
+              </div>
+              <div className="text-xs text-silver-400 space-y-1">
+                {dateFiltered.length === 0 ? (
+                  <p>Try exporting a different date range from Xero, or adjust the cutoff date.</p>
+                ) : (
+                  <p>All invoices in range are already PAID, VOIDED, or DRAFT.</p>
                 )}
               </div>
             </div>
