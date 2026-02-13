@@ -1,4 +1,4 @@
-import type { VoidResult, BankDeposit, ClearingTransaction, DepositMatch } from './types'
+import type { VoidResult, BankDeposit, ClearingTransaction, DepositMatch, XeroInvoiceSummary, BulkDeleteResult } from './types'
 
 // ── Environment ──
 
@@ -374,4 +374,198 @@ export async function applyClearing(
     success: true,
     message: `Bank transfer created for $${amount.toFixed(2)} covering ${clearingTransactionIds.length} clearing transactions`,
   }
+}
+
+// ── Feature 3: Bulk delete / void invoices before a cutoff date ──
+
+/**
+ * Fetch all invoices from Xero before a given cutoff date.
+ * Paginates through results (Xero returns max 100 per page).
+ * Only returns invoices that can be deleted (DRAFT/SUBMITTED) or voided (AUTHORISED/AWAITING PAYMENT).
+ */
+export async function fetchInvoicesBeforeDate(
+  cutoffDate: string
+): Promise<XeroInvoiceSummary[]> {
+  const headers = await xeroHeaders()
+  const [year, month, day] = cutoffDate.split('-').map(Number)
+  const where = `Date<DateTime(${year},${month},${day})`
+  const statuses = ['DRAFT', 'SUBMITTED', 'AUTHORISED']
+
+  const allInvoices: XeroInvoiceSummary[] = []
+
+  for (const status of statuses) {
+    let page = 1
+    let hasMore = true
+
+    while (hasMore) {
+      const statusWhere = `${where} AND Status=="${status}"`
+      const url = `${XERO_API_BASE}/Invoices?where=${encodeURIComponent(statusWhere)}&page=${page}&order=${encodeURIComponent('Date ASC')}`
+
+      const res = await fetch(url, { headers })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Xero Invoices API ${res.status}: ${text.slice(0, 300)}`)
+      }
+
+      const data = await res.json()
+      const invoices: Array<Record<string, unknown>> = data.Invoices ?? []
+
+      for (const inv of invoices) {
+        allInvoices.push({
+          invoiceId: inv.InvoiceID as string,
+          invoiceNumber: (inv.InvoiceNumber as string) ?? '',
+          date: ((inv.Date as string) ?? '').slice(0, 10),
+          dueDate: ((inv.DueDate as string) ?? '').slice(0, 10),
+          status: inv.Status as string,
+          type: inv.Type as string,
+          contact: (inv.Contact as Record<string, unknown>)?.Name as string ?? '',
+          total: Number(inv.Total ?? 0),
+          amountDue: Number(inv.AmountDue ?? 0),
+        })
+      }
+
+      hasMore = invoices.length === 100
+      page++
+      if (hasMore) await sleep(BATCH_DELAY_MS)
+    }
+  }
+
+  return allInvoices
+}
+
+/**
+ * Delete or void a single invoice depending on its status.
+ * DRAFT/SUBMITTED → Status = DELETED
+ * AUTHORISED → Status = VOIDED
+ */
+async function deleteOrVoidInvoice(
+  invoice: XeroInvoiceSummary
+): Promise<BulkDeleteResult> {
+  const headers = await xeroHeaders()
+  const status = invoice.status.toUpperCase()
+  let targetStatus: 'DELETED' | 'VOIDED'
+
+  if (status === 'DRAFT' || status === 'SUBMITTED') {
+    targetStatus = 'DELETED'
+  } else if (status === 'AUTHORISED') {
+    targetStatus = 'VOIDED'
+  } else {
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceId: invoice.invoiceId,
+      action: 'SKIPPED',
+      success: false,
+      message: `Cannot delete/void invoice with status "${status}"`,
+    }
+  }
+
+  const body = {
+    InvoiceID: invoice.invoiceId,
+    InvoiceNumber: invoice.invoiceNumber,
+    Status: targetStatus,
+  }
+
+  const res = await fetch(`${XERO_API_BASE}/Invoices/${invoice.invoiceId}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceId: invoice.invoiceId,
+      action: targetStatus,
+      success: false,
+      message: `Xero API ${res.status}: ${text.slice(0, 200)}`,
+    }
+  }
+
+  const data = await res.json()
+  const resultInv = data.Invoices?.[0]
+
+  if (resultInv?.HasErrors) {
+    const msgs = ((resultInv.ValidationErrors as Array<{ Message: string }>) ?? [])
+      .map((e: { Message: string }) => e.Message)
+      .join('; ')
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceId: invoice.invoiceId,
+      action: targetStatus,
+      success: false,
+      message: msgs || 'Unknown validation error',
+    }
+  }
+
+  return {
+    invoiceNumber: invoice.invoiceNumber,
+    invoiceId: invoice.invoiceId,
+    action: targetStatus,
+    success: true,
+    message: targetStatus === 'DELETED' ? 'Deleted' : 'Voided',
+  }
+}
+
+/**
+ * Bulk delete/void invoices in batches with rate-limit pauses.
+ */
+export async function bulkDeleteInvoices(
+  invoices: XeroInvoiceSummary[]
+): Promise<{ results: BulkDeleteResult[]; stoppedEarly: boolean }> {
+  const results: BulkDeleteResult[] = []
+
+  for (let i = 0; i < invoices.length; i++) {
+    const result = await deleteOrVoidInvoice(invoices[i])
+    results.push(result)
+
+    // Check for API-level failure to stop early
+    if (!result.success && result.message.startsWith('Xero API 4')) {
+      return { results, stoppedEarly: true }
+    }
+    if (!result.success && result.message.startsWith('Xero API 5')) {
+      return { results, stoppedEarly: true }
+    }
+
+    // Rate limit: pause every BATCH_SIZE invoices
+    if ((i + 1) % BATCH_SIZE === 0 && i + 1 < invoices.length) {
+      await sleep(BATCH_DELAY_MS)
+    }
+  }
+
+  return { results, stoppedEarly: false }
+}
+
+/**
+ * Dry-run for bulk delete: returns what would happen without calling Xero.
+ */
+export function dryRunDelete(invoices: XeroInvoiceSummary[]): BulkDeleteResult[] {
+  return invoices.map((inv) => {
+    const status = inv.status.toUpperCase()
+    if (status === 'DRAFT' || status === 'SUBMITTED') {
+      return {
+        invoiceNumber: inv.invoiceNumber,
+        invoiceId: inv.invoiceId,
+        action: 'DELETED' as const,
+        success: true,
+        message: 'Would be deleted (dry run)',
+      }
+    }
+    if (status === 'AUTHORISED') {
+      return {
+        invoiceNumber: inv.invoiceNumber,
+        invoiceId: inv.invoiceId,
+        action: 'VOIDED' as const,
+        success: true,
+        message: 'Would be voided (dry run)',
+      }
+    }
+    return {
+      invoiceNumber: inv.invoiceNumber,
+      invoiceId: inv.invoiceId,
+      action: 'SKIPPED' as const,
+      success: false,
+      message: `Cannot delete/void: status "${status}"`,
+    }
+  })
 }
