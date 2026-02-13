@@ -4,7 +4,6 @@ import { bulkVoidInvoices, dryRunVoid } from '@/lib/xero/client'
 import type { BulkVoidRequest, BulkVoidResponse } from '@/lib/xero/types'
 
 export async function POST(request: NextRequest) {
-  // Auth check
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
@@ -19,11 +18,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Sanitise: trim and de-dupe
     const cleaned = [...new Set(invoiceNumbers.map((n) => n.trim()).filter(Boolean))]
 
     if (dryRun) {
-      const results = dryRunVoid(cleaned)
+      dryRunVoid(cleaned)
       const resp: BulkVoidResponse = {
         total: cleaned.length,
         attempted: 0,
@@ -31,12 +29,12 @@ export async function POST(request: NextRequest) {
         skipped: cleaned.length,
         errors: [],
         dryRun: true,
+        user: auth.user,
       }
       return NextResponse.json(resp)
     }
 
-    // Real void
-    const results = await bulkVoidInvoices(cleaned)
+    const { results, stoppedEarly } = await bulkVoidInvoices(cleaned)
     const voided = results.filter((r) => r.success).length
     const errors = results
       .filter((r) => !r.success)
@@ -44,15 +42,17 @@ export async function POST(request: NextRequest) {
 
     const resp: BulkVoidResponse = {
       total: cleaned.length,
-      attempted: cleaned.length,
+      attempted: results.length,
       voided,
       skipped: 0,
       errors,
       dryRun: false,
+      stoppedEarly,
+      user: auth.user,
     }
 
     console.log(
-      `[AUDIT] bulk-void by ${auth.user} at ${new Date().toISOString()} — total=${cleaned.length} voided=${voided} errors=${errors.length}`
+      `[AUDIT] bulk-void by ${auth.user} at ${new Date().toISOString()} — total=${cleaned.length} voided=${voided} errors=${errors.length} stoppedEarly=${stoppedEarly}`
     )
 
     return NextResponse.json(resp)

@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import type { ParsedInvoice } from '@/lib/xero/types'
-import type { BulkVoidResponse } from '@/lib/xero/types'
+import type { ParsedInvoice, BulkVoidResponse, BulkVoidAuditEntry } from '@/lib/xero/types'
+
+const AUDIT_STORAGE_KEY = 'xero_bulk_void_history'
+const MAX_CUTOFF = '2026-01-01' // Do not allow cutoff after this without confirmation
 
 // ── CSV helpers ──
 
@@ -14,9 +16,14 @@ function parseCSV(text: string): ParsedInvoice[] {
   const headerLine = lines[0]
   const headers = headerLine.split(',').map((h) => h.replace(/"/g, '').trim().toLowerCase())
 
-  const numIdx = headers.findIndex((h) => h.includes('invoice') && h.includes('number'))
+  const numIdx = headers.findIndex(
+    (h) =>
+      (h.includes('invoice') && h.includes('number')) ||
+      (h.includes('invoice') && h.includes('no'))
+  )
   const dateIdx = headers.findIndex((h) => h === 'date' || h.includes('invoice date'))
   const amtIdx = headers.findIndex((h) => h.includes('amount') || h.includes('total'))
+  const statusIdx = headers.findIndex((h) => h === 'status')
 
   if (numIdx === -1) return []
 
@@ -29,6 +36,7 @@ function parseCSV(text: string): ParsedInvoice[] {
       invoiceNumber,
       date: cols[dateIdx]?.replace(/"/g, '').trim() ?? '',
       amount: parseFloat(cols[amtIdx]?.replace(/"/g, '').trim() ?? '0') || 0,
+      status: statusIdx >= 0 ? cols[statusIdx]?.replace(/"/g, '').trim() : undefined,
     })
   }
   return results
@@ -53,28 +61,91 @@ function splitCSVLine(line: string): string[] {
 }
 
 function isBeforeCutoff(dateStr: string, cutoff: string): boolean {
-  // Try to normalise common date formats
   const parsed = new Date(dateStr)
   const cutoffDate = new Date(cutoff)
   if (isNaN(parsed.getTime()) || isNaN(cutoffDate.getTime())) return false
   return parsed < cutoffDate
 }
 
+/** AUTHORISED / Awaiting Payment only. PAID/DRAFT/VOIDED = not safe to void. */
+function isVoidableStatus(status: string | undefined): boolean {
+  if (!status) return true
+  const s = status.toUpperCase().replace(/\s+/g, ' ')
+  return (
+    s === 'AUTHORISED' ||
+    s === 'AUTHORIZED' ||
+    s.includes('AWAITING') ||
+    s.includes('AUTHOR')
+  )
+}
+
+function formatAmount(n: number): string {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 2,
+  }).format(n)
+}
+
+function loadAuditHistory(): BulkVoidAuditEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(AUDIT_STORAGE_KEY)
+    if (!raw) return []
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
+}
+
+function saveAuditEntry(entry: BulkVoidAuditEntry) {
+  if (typeof window === 'undefined') return
+  try {
+    const history = loadAuditHistory()
+    history.unshift(entry)
+    const trimmed = history.slice(0, 50)
+    localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(trimmed))
+  } catch {
+    // ignore
+  }
+}
+
 // ── Component ──
 
 export default function BulkVoidPage() {
   const [allInvoices, setAllInvoices] = useState<ParsedInvoice[]>([])
-  const [cutoffDate, setCutoffDate] = useState('2026-01-01')
+  const [cutoffDate, setCutoffDate] = useState(MAX_CUTOFF)
+  const [allowCutoffAfterMax, setAllowCutoffAfterMax] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<BulkVoidResponse | null>(null)
   const [error, setError] = useState('')
-  const [auditLog, setAuditLog] = useState<string[]>([])
+  const [hasDryRunThisSession, setHasDryRunThisSession] = useState(false)
+  const [confirmationPhrase, setConfirmationPhrase] = useState('')
+  const [auditHistory, setAuditHistory] = useState<BulkVoidAuditEntry[]>([])
 
-  const filtered = allInvoices.filter((inv) => isBeforeCutoff(inv.date, cutoffDate))
+  // Strict filtering: date < cutoff, status = AUTHORISED/Awaiting Payment only
+  const dateFiltered = allInvoices.filter((inv) => isBeforeCutoff(inv.date, cutoffDate))
+  const toVoid = dateFiltered.filter((inv) => isVoidableStatus(inv.status))
+  const skipped = dateFiltered.filter((inv) => !isVoidableStatus(inv.status))
+
+  const totalAmount = toVoid.reduce((sum, inv) => sum + inv.amount, 0)
+  const requiredPhrase = `VOID ${toVoid.length} INVOICES TOTAL ${formatAmount(totalAmount)}`
+  const phraseMatches =
+    confirmationPhrase.trim().toUpperCase() === requiredPhrase.trim().toUpperCase()
+
+  const cutoffExceedsMax = cutoffDate > MAX_CUTOFF
+  const cutoffAllowed = !cutoffExceedsMax || allowCutoffAfterMax
+  const hasDateFilter = cutoffDate && allInvoices.length > 0
+
+  useEffect(() => {
+    setAuditHistory(loadAuditHistory())
+  }, [result])
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setResult(null)
     setError('')
+    setHasDryRunThisSession(false)
+    setConfirmationPhrase('')
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -92,7 +163,19 @@ export default function BulkVoidPage() {
   }, [])
 
   const callBulkVoid = async (dryRun: boolean) => {
-    if (filtered.length === 0) return
+    if (toVoid.length === 0) return
+    if (!dryRun && !hasDryRunThisSession) {
+      setError('You must run a dry-run first before making changes in Xero.')
+      return
+    }
+    if (!dryRun && !phraseMatches) {
+      setError(`Type the confirmation phrase exactly: ${requiredPhrase}`)
+      return
+    }
+    if (!cutoffAllowed) {
+      setError('Cutoff date exceeds 2026-01-01. Tick "I know what I\'m doing" to proceed.')
+      return
+    }
     setLoading(true)
     setError('')
     setResult(null)
@@ -102,7 +185,7 @@ export default function BulkVoidPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          invoiceNumbers: filtered.map((i) => i.invoiceNumber),
+          invoiceNumbers: toVoid.map((i) => i.invoiceNumber),
           dryRun,
         }),
       })
@@ -114,10 +197,20 @@ export default function BulkVoidPage() {
 
       const data: BulkVoidResponse = await res.json()
       setResult(data)
-      setAuditLog((prev) => [
-        `[${new Date().toLocaleString()}] ${dryRun ? 'DRY RUN' : 'VOID'} — ${data.total} invoices, cutoff=${cutoffDate}, voided=${data.voided}, errors=${data.errors.length}`,
-        ...prev,
-      ])
+      if (dryRun) setHasDryRunThisSession(true)
+      if (!dryRun && data.user) {
+        const entry: BulkVoidAuditEntry = {
+          timestamp: new Date().toISOString(),
+          user: data.user,
+          cutoffDate,
+          attempted: data.attempted,
+          voided: data.voided,
+          failed: data.errors.length,
+          dryRun: false,
+        }
+        saveAuditEntry(entry)
+        setAuditHistory(loadAuditHistory())
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -127,7 +220,6 @@ export default function BulkVoidPage() {
 
   return (
     <div>
-      {/* Header */}
       <div className="mb-6 flex items-center gap-3">
         <Link href="/admin" className="text-silver-400 hover:text-white transition-colors">
           ← Back
@@ -135,7 +227,7 @@ export default function BulkVoidPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Xero Bulk Void Tool</h1>
           <p className="text-silver-400 text-sm">
-            Void incorrect Halaxy invoices in Xero for a date range
+            Void Halaxy-origin invoices before 1 Jan 2026 in Xero (safe, reversible workflow)
           </p>
         </div>
       </div>
@@ -144,7 +236,7 @@ export default function BulkVoidPage() {
       <div className="card mb-6">
         <h2 className="text-lg font-semibold text-white mb-3">Step 1 — Upload Xero Invoice CSV</h2>
         <p className="text-silver-400 text-sm mb-3">
-          Export your invoices from Xero (filtered by date), save as CSV, then upload here.
+          Export from Xero (Sales → Invoices, filter 26 Sep–31 Dec 2025), save as CSV.
         </p>
         <input
           type="file"
@@ -153,18 +245,16 @@ export default function BulkVoidPage() {
           className="block w-full text-sm text-silver-300 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-slate-blue/20 file:text-white hover:file:bg-slate-blue/40 cursor-pointer"
         />
         {allInvoices.length > 0 && (
-          <p className="mt-2 text-sm text-green-400">
-            ✓ Loaded {allInvoices.length} invoices from CSV
-          </p>
+          <p className="mt-2 text-sm text-green-400">✓ Loaded {allInvoices.length} invoices</p>
         )}
       </div>
 
-      {/* Step 2: Cutoff date */}
+      {/* Step 2: Cutoff + pre-flight */}
       {allInvoices.length > 0 && (
         <div className="card mb-6">
-          <h2 className="text-lg font-semibold text-white mb-3">Step 2 — Set Cutoff Date</h2>
+          <h2 className="text-lg font-semibold text-white mb-3">Step 2 — Cutoff & Pre-flight</h2>
           <p className="text-silver-400 text-sm mb-3">
-            Only invoices with a date <strong>before</strong> this cutoff will be voided.
+            Only invoices with date <strong>before</strong> this cutoff will be voided.
           </p>
           <input
             type="date"
@@ -172,20 +262,61 @@ export default function BulkVoidPage() {
             onChange={(e) => {
               setCutoffDate(e.target.value)
               setResult(null)
+              setHasDryRunThisSession(false)
             }}
             className="bg-charcoal border border-silver-700/30 rounded px-3 py-2 text-white"
           />
-          <p className="mt-2 text-sm text-silver-300">
-            {filtered.length} of {allInvoices.length} invoices are before {cutoffDate}
-          </p>
+          {cutoffExceedsMax && (
+            <div className="mt-4 flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allowCutoffAfterMax}
+                  onChange={(e) => {
+                    setAllowCutoffAfterMax(e.target.checked)
+                    setResult(null)
+                  }}
+                  className="rounded border-silver-600 bg-charcoal text-slate-blue"
+                />
+                <span className="text-sm text-amber-400">
+                  I know what I&apos;m doing (cutoff after 2026-01-01)
+                </span>
+              </label>
+            </div>
+          )}
+          <div className="mt-4 p-4 bg-charcoal/50 rounded border border-silver-700/30">
+            <div className="text-white font-medium">
+              {toVoid.length} invoices will be voided.
+            </div>
+            <div className="text-silver-300 text-sm mt-1">
+              Total value affected: {formatAmount(totalAmount)}
+            </div>
+          </div>
+          {skipped.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-sm font-medium text-amber-400 mb-2">
+                Skipped — not safe to void ({skipped.length})
+              </h3>
+              <div className="max-h-32 overflow-y-auto text-xs font-mono space-y-1 text-silver-400">
+                {skipped.slice(0, 50).map((inv) => (
+                  <div key={inv.invoiceNumber}>
+                    {inv.invoiceNumber} — {inv.status ?? '?'} — {formatAmount(inv.amount)}
+                  </div>
+                ))}
+                {skipped.length > 50 && (
+                  <div className="text-silver-500">… and {skipped.length - 50} more</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Step 3: Preview table */}
-      {filtered.length > 0 && (
+      {/* Step 3: Preview + actions */}
+      {toVoid.length > 0 && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">
-            Step 3 — Preview ({filtered.length} invoices)
+            Step 3 — Preview ({toVoid.length} invoices)
           </h2>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-sm text-left">
@@ -194,66 +325,85 @@ export default function BulkVoidPage() {
                   <th className="py-2 pr-4">Invoice Number</th>
                   <th className="py-2 pr-4">Date</th>
                   <th className="py-2 pr-4 text-right">Amount</th>
+                  {toVoid.some((i) => i.status) && <th className="py-2 pr-4">Status</th>}
                 </tr>
               </thead>
               <tbody className="text-silver-200">
-                {filtered.slice(0, 200).map((inv) => (
+                {toVoid.slice(0, 200).map((inv) => (
                   <tr key={inv.invoiceNumber} className="border-b border-silver-700/10">
                     <td className="py-1.5 pr-4 font-mono text-xs">{inv.invoiceNumber}</td>
                     <td className="py-1.5 pr-4">{inv.date}</td>
-                    <td className="py-1.5 pr-4 text-right">${inv.amount.toFixed(2)}</td>
+                    <td className="py-1.5 pr-4 text-right">{formatAmount(inv.amount)}</td>
+                    {toVoid.some((i) => i.status) && (
+                      <td className="py-1.5 pr-4">{inv.status ?? '—'}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
-            {filtered.length > 200 && (
-              <p className="text-silver-500 text-xs mt-2">
-                Showing first 200 of {filtered.length} invoices
-              </p>
+            {toVoid.length > 200 && (
+              <p className="text-silver-500 text-xs mt-2">Showing first 200 of {toVoid.length}</p>
             )}
           </div>
+
+          {/* Confirmation phrase for real void */}
+          {hasDryRunThisSession && (
+            <div className="mt-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
+              <p className="text-sm text-amber-200 mb-2">Type this exactly to enable Void:</p>
+              <code className="block text-xs text-white mb-2 font-mono">
+                {requiredPhrase}
+              </code>
+              <input
+                type="text"
+                value={confirmationPhrase}
+                onChange={(e) => setConfirmationPhrase(e.target.value)}
+                placeholder="Paste or type the phrase above"
+                className="w-full px-3 py-2 bg-charcoal border border-silver-600 rounded text-white text-sm font-mono"
+              />
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-3 mt-4">
             <button
               onClick={() => callBulkVoid(true)}
-              disabled={loading}
+              disabled={loading || !cutoffAllowed}
               className="px-4 py-2 bg-slate-blue/20 text-white rounded hover:bg-slate-blue/40 transition-colors disabled:opacity-50 text-sm font-medium"
             >
-              {loading ? 'Running…' : '🔍 Dry Run'}
+              {loading ? 'Running…' : '🔍 Dry Run (required first)'}
             </button>
             <button
-              onClick={() => {
-                if (
-                  confirm(
-                    `⚠️ This will VOID ${filtered.length} invoices in Xero.\n\nThis action CANNOT be undone.\n\nAre you sure?`
-                  )
-                ) {
-                  callBulkVoid(false)
-                }
-              }}
-              disabled={loading}
+              onClick={() => callBulkVoid(false)}
+              disabled={loading || !hasDryRunThisSession || !phraseMatches || !cutoffAllowed}
               className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 text-sm font-bold"
             >
-              {loading ? 'Voiding…' : `🗑️ Void ${filtered.length} Invoices Now`}
+              {loading ? 'Voiding…' : `🗑️ Void ${toVoid.length} Invoices Now`}
             </button>
           </div>
+          {!hasDryRunThisSession && toVoid.length > 0 && (
+            <p className="mt-2 text-sm text-amber-400">
+              You must run a dry-run first before making changes in Xero.
+            </p>
+          )}
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="card mb-6 border-red-500/50 bg-red-900/20">
           <p className="text-red-400 text-sm">❌ {error}</p>
         </div>
       )}
 
-      {/* Results */}
       {result && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">
             {result.dryRun ? '🔍 Dry Run Result' : '✅ Void Result'}
           </h2>
+          {result.stoppedEarly && (
+            <p className="text-amber-400 text-sm mb-3">
+              ⚠️ Stopped early due to API error. Partial results below.
+            </p>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
               <div className="text-silver-400 text-xs">Total</div>
@@ -287,13 +437,15 @@ export default function BulkVoidPage() {
         </div>
       )}
 
-      {/* Audit log */}
-      {auditLog.length > 0 && (
+      {auditHistory.length > 0 && (
         <div className="card">
-          <h2 className="text-lg font-semibold text-white mb-3">Operation Log</h2>
-          <div className="space-y-1 text-xs font-mono text-silver-400 max-h-40 overflow-y-auto">
-            {auditLog.map((entry, i) => (
-              <div key={i}>{entry}</div>
+          <h2 className="text-lg font-semibold text-white mb-3">History</h2>
+          <div className="space-y-2 text-xs font-mono text-silver-400 max-h-48 overflow-y-auto">
+            {auditHistory.slice(0, 20).map((entry, i) => (
+              <div key={i} className="border-b border-silver-700/20 pb-2">
+                {new Date(entry.timestamp).toLocaleString()} — {entry.user} — cutoff {entry.cutoffDate}
+                — attempted {entry.attempted}, voided {entry.voided}, failed {entry.failed}
+              </div>
             ))}
           </div>
         </div>

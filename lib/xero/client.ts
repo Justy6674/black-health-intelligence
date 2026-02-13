@@ -24,6 +24,15 @@ export async function getAccessToken(): Promise<string> {
 
   const clientId = env('XERO_CLIENT_ID')
   const clientSecret = env('XERO_CLIENT_SECRET')
+  const refreshToken = process.env.XERO_REFRESH_TOKEN
+
+  const bodyParams: Record<string, string> =
+    refreshToken
+      ? { grant_type: 'refresh_token', refresh_token: refreshToken }
+      : {
+          grant_type: 'client_credentials',
+          scope: 'accounting.transactions accounting.settings accounting.contacts',
+        }
 
   const res = await fetch(XERO_TOKEN_URL, {
     method: 'POST',
@@ -31,10 +40,7 @@ export async function getAccessToken(): Promise<string> {
       'Content-Type': 'application/x-www-form-urlencoded',
       Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
     },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      scope: 'accounting.transactions accounting.settings accounting.contacts',
-    }),
+    body: new URLSearchParams(bodyParams),
   })
 
   if (!res.ok) {
@@ -54,12 +60,15 @@ export async function getAccessToken(): Promise<string> {
 
 async function xeroHeaders(): Promise<Record<string, string>> {
   const token = await getAccessToken()
-  return {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
-    'xero-tenant-id': env('XERO_TENANT_ID'),
     'Content-Type': 'application/json',
     Accept: 'application/json',
   }
+  // Custom Connection: tenant-id not required (one org per connection). OAuth apps need it.
+  const tenantId = process.env.XERO_TENANT_ID
+  if (tenantId) headers['xero-tenant-id'] = tenantId
+  return headers
 }
 
 function sleep(ms: number) {
@@ -118,20 +127,34 @@ export async function voidInvoicesBatch(invoiceNumbers: string[]): Promise<VoidR
   })
 }
 
+export interface BulkVoidOutcome {
+  results: VoidResult[]
+  stoppedEarly: boolean // true if a batch returned 4xx/5xx
+}
+
 /**
  * Chunk invoice numbers and void in batches with rate‑limit pauses.
+ * Stops on first 4xx/5xx batch and returns partial results.
  */
-export async function bulkVoidInvoices(invoiceNumbers: string[]): Promise<VoidResult[]> {
+export async function bulkVoidInvoices(invoiceNumbers: string[]): Promise<BulkVoidOutcome> {
   const results: VoidResult[] = []
   for (let i = 0; i < invoiceNumbers.length; i += BATCH_SIZE) {
     const chunk = invoiceNumbers.slice(i, i + BATCH_SIZE)
     const batch = await voidInvoicesBatch(chunk)
+    const batchFailed =
+      batch.length > 0 &&
+      batch.every(
+        (r) => !r.success && (r.message.startsWith('Xero API 4') || r.message.startsWith('Xero API 5'))
+      )
     results.push(...batch)
+    if (batchFailed) {
+      return { results, stoppedEarly: true }
+    }
     if (i + BATCH_SIZE < invoiceNumbers.length) {
       await sleep(BATCH_DELAY_MS)
     }
   }
-  return results
+  return { results, stoppedEarly: false }
 }
 
 /**
