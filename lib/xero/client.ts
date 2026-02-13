@@ -168,6 +168,93 @@ export function dryRunVoid(invoiceNumbers: string[]): VoidResult[] {
   }))
 }
 
+// ── Feature 1b: Reports & queries (for AI assistant) ──
+
+/** Fetch Profit and Loss report. Dates in YYYY-MM-DD. */
+export async function getProfitAndLoss(
+  fromDate?: string,
+  toDate?: string
+): Promise<Record<string, unknown>> {
+  const headers = await xeroHeaders()
+  const params = new URLSearchParams()
+  if (fromDate) params.set('fromDate', fromDate)
+  if (toDate) params.set('toDate', toDate)
+  const url = `${XERO_API_BASE}/Reports/ProfitAndLoss${params.toString() ? `?${params}` : ''}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`Xero P&L ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+/** Fetch Balance Sheet report. Date in YYYY-MM-DD. */
+export async function getBalanceSheet(date?: string): Promise<Record<string, unknown>> {
+  const headers = await xeroHeaders()
+  const params = date ? `?date=${date}` : ''
+  const res = await fetch(`${XERO_API_BASE}/Reports/BalanceSheet${params}`, { headers })
+  if (!res.ok) throw new Error(`Xero BalanceSheet ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+/** Fetch Trial Balance report. Date in YYYY-MM-DD. */
+export async function getTrialBalance(date?: string): Promise<Record<string, unknown>> {
+  const headers = await xeroHeaders()
+  const params = date ? `?date=${date}` : ''
+  const res = await fetch(`${XERO_API_BASE}/Reports/TrialBalance${params}`, { headers })
+  if (!res.ok) throw new Error(`Xero TrialBalance ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+/** Fetch Bank Summary report. Dates in YYYY-MM-DD. */
+export async function getBankSummary(
+  fromDate?: string,
+  toDate?: string
+): Promise<Record<string, unknown>> {
+  const headers = await xeroHeaders()
+  const params = new URLSearchParams()
+  if (fromDate) params.set('fromDate', fromDate)
+  if (toDate) params.set('toDate', toDate)
+  const url = `${XERO_API_BASE}/Reports/BankSummary${params.toString() ? `?${params}` : ''}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`Xero BankSummary ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+/** List invoices. status: DRAFT|SUBMITTED|AUTHORISED. where: Xero filter e.g. Status=="AUTHORISED" AND DueDate<DateTime(...) */
+export async function listInvoices(params?: {
+  status?: string
+  contactIDs?: string[]
+  where?: string
+  order?: string
+}): Promise<Record<string, unknown>> {
+  const headers = await xeroHeaders()
+  const searchParams = new URLSearchParams()
+  if (params?.status) searchParams.set('Statuses', params.status)
+  if (params?.contactIDs?.length) searchParams.set('ContactIDs', params.contactIDs.join(','))
+  if (params?.where) searchParams.set('where', params.where)
+  if (params?.order) searchParams.set('order', params.order)
+  const qs = searchParams.toString()
+  const url = `${XERO_API_BASE}/Invoices${qs ? `?${qs}` : ''}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`Xero Invoices ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+/** List contacts. */
+export async function listContacts(params?: { where?: string }): Promise<Record<string, unknown>> {
+  const headers = await xeroHeaders()
+  const qs = params?.where ? `?where=${encodeURIComponent(params.where)}` : ''
+  const res = await fetch(`${XERO_API_BASE}/Contacts${qs}`, { headers })
+  if (!res.ok) throw new Error(`Xero Contacts ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+/** Get organisation details. */
+export async function getOrganisation(): Promise<Record<string, unknown>> {
+  const headers = await xeroHeaders()
+  const res = await fetch(`${XERO_API_BASE}/Organisation`, { headers })
+  if (!res.ok) throw new Error(`Xero Organisation ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
 // ── Feature 2: Clearing‑account reconciliation ──
 
 /**
