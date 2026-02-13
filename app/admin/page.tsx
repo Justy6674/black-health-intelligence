@@ -66,6 +66,26 @@ export default async function AdminDashboard() {
                     </Link>
                 </div>
             </div>
+
+            {/* Xero Tools */}
+            <div className="card mt-8">
+                <h2 className="text-xl font-bold text-white mb-2">Xero Tools</h2>
+                <p className="text-sm text-silver-500 mb-4">Internal Halaxy → Xero repair &amp; reconciliation</p>
+                <div className="space-y-3">
+                    <Link href="/admin/xero/bulk-void" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-red-700/30">
+                            <h3 className="font-semibold text-white mb-1">🗑️ Bulk Void Invoices</h3>
+                            <p className="text-sm text-silver-400">Upload a Xero CSV and void incorrect Halaxy invoices in bulk</p>
+                        </div>
+                    </Link>
+                    <Link href="/admin/xero/clearing-helper" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-blue-700/30">
+                            <h3 className="font-semibold text-white mb-1">🏦 Clearing Account Reconciliation</h3>
+                            <p className="text-sm text-silver-400">Match NAB deposits to Halaxy clearing-account payments for fast bank rec</p>
+                        </div>
+                    </Link>
+                </div>
+            </div>
         </div>
     )
 }
