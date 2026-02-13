@@ -21,25 +21,45 @@ function parseCSV(text: string): ParsedInvoice[] {
       (h.includes('invoice') && h.includes('number')) ||
       (h.includes('invoice') && h.includes('no'))
   )
-  const dateIdx = headers.findIndex((h) => h === 'date' || h.includes('invoice date'))
-  const amtIdx = headers.findIndex((h) => h.includes('amount') || h.includes('total'))
+  const dateIdx = headers.findIndex(
+    (h) =>
+      h === 'date' ||
+      h === 'invoice date' ||
+      h === 'due date' ||
+      (h.includes('invoice') && h.includes('date')) || // "invoice date", "invoicedate"
+      (h.includes('due') && h.includes('date')) // "due date"
+  )
+  // Prefer "total" for invoice amount; "taxamount"/"amountdue" come before "total" in Xero exports
+  const totalIdx = headers.findIndex((h) => h === 'total')
+  const amtIdx =
+    totalIdx >= 0
+      ? totalIdx
+      : headers.findIndex((h) => h.includes('total') || h.includes('amount'))
   const statusIdx = headers.findIndex((h) => h === 'status')
 
   if (numIdx === -1) return []
 
-  const results: ParsedInvoice[] = []
+  const rowMap = new Map<string, { date: string; amount: number; status?: string }>()
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i])
     const invoiceNumber = cols[numIdx]?.replace(/"/g, '').trim()
     if (!invoiceNumber) continue
-    results.push({
-      invoiceNumber,
-      date: cols[dateIdx]?.replace(/"/g, '').trim() ?? '',
-      amount: parseFloat(cols[amtIdx]?.replace(/"/g, '').trim() ?? '0') || 0,
-      status: statusIdx >= 0 ? cols[statusIdx]?.replace(/"/g, '').trim() : undefined,
-    })
+    const date = cols[dateIdx]?.replace(/"/g, '').trim() ?? ''
+    const amount = parseFloat(cols[amtIdx]?.replace(/"/g, '').trim() ?? '0') || 0
+    const status = statusIdx >= 0 ? cols[statusIdx]?.replace(/"/g, '').trim() : undefined
+    const existing = rowMap.get(invoiceNumber)
+    if (existing) {
+      existing.amount += amount
+    } else {
+      rowMap.set(invoiceNumber, { date, amount, status })
+    }
   }
-  return results
+  return Array.from(rowMap.entries()).map(([invoiceNumber, { date, amount, status }]) => ({
+    invoiceNumber,
+    date,
+    amount,
+    status,
+  }))
 }
 
 function splitCSVLine(line: string): string[] {
@@ -60,10 +80,33 @@ function splitCSVLine(line: string): string[] {
   return result
 }
 
+/** Parse date from AU/UK DD/MM/YYYY or ISO YYYY-MM-DD. new Date() mishandles DD/MM/YYYY. */
+function parseDateSafe(dateStr: string): Date | null {
+  const s = (dateStr ?? '').trim()
+  if (!s) return null
+  // ISO: 2025-09-26
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
+  if (iso) {
+    const d = new Date(+iso[1], +iso[2] - 1, +iso[3])
+    return isNaN(d.getTime()) ? null : d
+  }
+  // AU/UK: 26/09/2025 or 26-09-2025
+  const dmy = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/.exec(s)
+  if (dmy) {
+    const day = +dmy[1]
+    const month = +dmy[2] - 1
+    const year = +dmy[3]
+    const d = new Date(year, month, day)
+    return isNaN(d.getTime()) ? null : d
+  }
+  const fallback = new Date(s)
+  return isNaN(fallback.getTime()) ? null : fallback
+}
+
 function isBeforeCutoff(dateStr: string, cutoff: string): boolean {
-  const parsed = new Date(dateStr)
+  const parsed = parseDateSafe(dateStr)
   const cutoffDate = new Date(cutoff)
-  if (isNaN(parsed.getTime()) || isNaN(cutoffDate.getTime())) return false
+  if (!parsed || isNaN(cutoffDate.getTime())) return false
   return parsed < cutoffDate
 }
 
