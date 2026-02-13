@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Safety: reject dates too far in the future
+    // Validate the date is parseable
     const cutoff = new Date(cutoffDate)
     if (isNaN(cutoff.getTime())) {
       return NextResponse.json({ error: 'Invalid cutoff date' }, { status: 400 })

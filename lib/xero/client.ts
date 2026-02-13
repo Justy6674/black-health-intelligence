@@ -411,6 +411,7 @@ export async function fetchInvoicesBeforeDate(
       const invoices: Array<Record<string, unknown>> = data.Invoices ?? []
 
       for (const inv of invoices) {
+        const contact = inv.Contact as Record<string, unknown> | undefined
         allInvoices.push({
           invoiceId: inv.InvoiceID as string,
           invoiceNumber: (inv.InvoiceNumber as string) ?? '',
@@ -418,7 +419,7 @@ export async function fetchInvoicesBeforeDate(
           dueDate: ((inv.DueDate as string) ?? '').slice(0, 10),
           status: inv.Status as string,
           type: inv.Type as string,
-          contact: (inv.Contact as Record<string, unknown>)?.Name as string ?? '',
+          contact: (contact?.Name as string) ?? '',
           total: Number(inv.Total ?? 0),
           amountDue: Number(inv.AmountDue ?? 0),
         })

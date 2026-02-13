@@ -6,6 +6,7 @@ import type { BulkDeleteResponse, BulkDeleteAuditEntry, XeroInvoiceSummary } fro
 
 const AUDIT_STORAGE_KEY = 'xero_bulk_delete_history'
 const DEFAULT_CUTOFF = '2026-01-01'
+const MAX_DISPLAY_ROWS = 200
 
 function formatAmount(n: number): string {
   return new Intl.NumberFormat('en-AU', {
@@ -232,7 +233,7 @@ export default function BulkDeletePage() {
                 </tr>
               </thead>
               <tbody className="text-silver-200">
-                {invoices.slice(0, 200).map((inv) => (
+                {invoices.slice(0, MAX_DISPLAY_ROWS).map((inv) => (
                   <tr key={inv.invoiceId} className="border-b border-silver-700/10">
                     <td className="py-1.5 pr-4 font-mono text-xs">{inv.invoiceNumber || '—'}</td>
                     <td className="py-1.5 pr-4">{inv.date}</td>
@@ -260,9 +261,9 @@ export default function BulkDeletePage() {
                 ))}
               </tbody>
             </table>
-            {invoices.length > 200 && (
+            {invoices.length > MAX_DISPLAY_ROWS && (
               <p className="text-silver-500 text-xs mt-2">
-                Showing first 200 of {invoices.length}
+                Showing first {MAX_DISPLAY_ROWS} of {invoices.length}
               </p>
             )}
           </div>
