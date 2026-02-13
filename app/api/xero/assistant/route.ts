@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/xero/auth'
 import { xeroAssistantTools } from '@/lib/xero/assistant-tools'
+import { XERO_ASSISTANT_SYSTEM_PROMPT } from '@/lib/xero/assistant-knowledge'
 import { streamText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { NextResponse } from 'next/server'
@@ -30,14 +31,7 @@ export async function POST(req: Request) {
 
     const result = streamText({
       model: openai('gpt-4o'),
-      system: `You are a Xero accounting assistant for Downscale (Australian telehealth clinic). Use the provided tools to answer questions about:
-- Profit and Loss (P&L), Balance Sheet, Trial Balance
-- Bank summary and cash flow
-- Invoices (outstanding, overdue)
-- Contacts (customers/suppliers)
-
-When the user asks about P&L, balance sheet, trial balance, or bank summary, always call the relevant tool. Summarise results clearly in Australian dollars (AUD). Use Australian date format (DD/MM/YYYY) when mentioning dates.
-Do not make up data — only use what the tools return.`,
+      system: XERO_ASSISTANT_SYSTEM_PROMPT,
       messages,
       maxSteps: 5,
       tools: xeroAssistantTools,

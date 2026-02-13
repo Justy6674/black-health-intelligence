@@ -17,7 +17,7 @@ export default function XeroAssistantPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Xero AI Assistant</h1>
           <p className="text-silver-400 text-sm">
-            Ask questions about P&L, balance sheet, trial balance, invoices, contacts
+            Ask about P&L, balance sheet, invoices, Halaxy-Xero sync, clearing accounts
           </p>
         </div>
       </div>
@@ -26,8 +26,9 @@ export default function XeroAssistantPage() {
         <div className="space-y-4 mb-6 max-h-[50vh] overflow-y-auto">
           {messages.length === 0 && (
             <p className="text-silver-400 text-sm">
-              Try: &quot;What&apos;s my P&L for Q4 2025?&quot; or &quot;Show overdue invoices&quot; or
-              &quot;Trial balance as at end of January&quot;
+              Try: &quot;What&apos;s my P&L for this quarter?&quot; &bull; &quot;Show overdue invoices&quot; &bull;
+              &quot;How does Halaxy sync to Xero?&quot; &bull; &quot;Explain the clearing account pattern&quot; &bull;
+              &quot;Why might I see duplicate payments?&quot;
             </p>
           )}
           {messages.map((m) => (
