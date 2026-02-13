@@ -11,3 +11,4 @@ COMMENT ON COLUMN projects.capital_raise_amount IS 'Target amount for capital ra
 COMMENT ON COLUMN projects.capital_raise_deadline IS 'Deadline for the capital raise';
 COMMENT ON COLUMN projects.investment_details IS 'Details about the investment opportunity, what is being offered';
 
+

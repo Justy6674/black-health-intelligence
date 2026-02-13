@@ -9,3 +9,4 @@ export default function PacManBackgroundWrapper() {
     return <PacManBackground />
 }
 
+

@@ -45,3 +45,4 @@ Before you can use the admin panel, make sure you've run the updated database sc
 This creates all the new tables and columns needed for the enhanced project management.
 
 
+

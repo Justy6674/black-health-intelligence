@@ -24,7 +24,6 @@ export async function getAccessToken(): Promise<string> {
 
   const clientId = env('XERO_CLIENT_ID')
   const clientSecret = env('XERO_CLIENT_SECRET')
-  const refreshToken = env('XERO_REFRESH_TOKEN')
 
   const res = await fetch(XERO_TOKEN_URL, {
     method: 'POST',
@@ -33,14 +32,14 @@ export async function getAccessToken(): Promise<string> {
       Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
     },
     body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
+      grant_type: 'client_credentials',
+      scope: 'accounting.transactions accounting.settings accounting.contacts',
     }),
   })
 
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Xero token refresh failed (${res.status}): ${text}`)
+    throw new Error(`Xero token request failed (${res.status}): ${text}`)
   }
 
   const data = await res.json()
