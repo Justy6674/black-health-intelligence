@@ -149,6 +149,27 @@ export function dryRunVoid(invoiceNumbers: string[]): VoidResult[] {
 // ── Feature 2: Clearing‑account reconciliation ──
 
 /**
+ * Build a Xero `where` clause for querying bank transactions by account + date range.
+ */
+function buildBankTxnWhere(
+  accountId: string,
+  fromDate: string,
+  toDate: string,
+  extraClauses: string[] = []
+): string {
+  const from = fromDate.replace(/-/g, ',')
+  const to = toDate.replace(/-/g, ',')
+  const clauses = [
+    `BankAccount.AccountID=guid("${accountId}")`,
+    `Status=="AUTHORISED"`,
+    `Date>=DateTime(${from})`,
+    `Date<=DateTime(${to})`,
+    ...extraClauses,
+  ]
+  return clauses.join(' AND ')
+}
+
+/**
  * Fetch unreconciled bank transactions for a given Xero account and date range.
  */
 export async function getUnreconciledBankTransactions(
@@ -157,7 +178,7 @@ export async function getUnreconciledBankTransactions(
   toDate: string
 ): Promise<BankDeposit[]> {
   const headers = await xeroHeaders()
-  const where = `BankAccount.AccountID=guid("${accountId}") AND Status=="AUTHORISED" AND Type=="RECEIVE" AND Date>=DateTime(${fromDate.replace(/-/g, ',')}) AND Date<=DateTime(${toDate.replace(/-/g, ',')})`
+  const where = buildBankTxnWhere(accountId, fromDate, toDate, ['Type=="RECEIVE"'])
   const url = `${XERO_API_BASE}/BankTransactions?where=${encodeURIComponent(where)}`
 
   const res = await fetch(url, { headers })
@@ -185,7 +206,7 @@ export async function getClearingTransactions(
   toDate: string
 ): Promise<ClearingTransaction[]> {
   const headers = await xeroHeaders()
-  const where = `BankAccount.AccountID=guid("${clearingAccountId}") AND Status=="AUTHORISED" AND Date>=DateTime(${fromDate.replace(/-/g, ',')}) AND Date<=DateTime(${toDate.replace(/-/g, ',')})`
+  const where = buildBankTxnWhere(clearingAccountId, fromDate, toDate)
   const url = `${XERO_API_BASE}/BankTransactions?where=${encodeURIComponent(where)}`
 
   const res = await fetch(url, { headers })
