@@ -210,7 +210,7 @@ export default function BulkVoidPage() {
   const [xeroStatus, setXeroStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [xeroOrgName, setXeroOrgName] = useState<string | null>(null)
   const [xeroError, setXeroError] = useState<string | null>(null)
-  const [parseMeta, setParseMeta] = useState<ParseResult['parseMeta']>(null)
+  const [parseMeta, setParseMeta] = useState<ParseResult['parseMeta'] | null>(null)
   const [includePaid, setIncludePaid] = useState(false)
   const [paidWipeMode, setPaidWipeMode] = useState(false)
   const [paidWipePhrase, setPaidWipePhrase] = useState('')
