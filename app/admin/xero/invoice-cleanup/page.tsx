@@ -326,8 +326,8 @@ export default function InvoiceCleanupPage() {
       try {
         const body =
           inputMode === 'fetch' && !retryNumbers?.length
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage }
-            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 50 : undefined }
+            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 50 : undefined }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -683,7 +683,7 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay PAID</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED.
+                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Processes 50 per run to avoid timeout — click &quot;Continue&quot; if more remain.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -714,6 +714,15 @@ export default function InvoiceCleanupPage() {
                             className="px-4 py-2 bg-amber-700/60 text-white rounded hover:bg-amber-600 transition-colors disabled:opacity-50 text-sm"
                           >
                             Retry Un-pay ({failedUnpay.length} failed)
+                          </button>
+                        )}
+                        {result.partial && (result.remainingInvoiceNumbers?.length ?? 0) > 0 && (
+                          <button
+                            onClick={() => executeStage('unpay', result.remainingInvoiceNumbers)}
+                            disabled={loading || !phraseMatches}
+                            className="px-4 py-2 bg-green-700/60 text-white rounded hover:bg-green-600 transition-colors disabled:opacity-50 text-sm font-medium"
+                          >
+                            Continue Stage 1 ({result.remainingInvoiceNumbers!.length} remaining)
                           </button>
                         )}
                       </>
@@ -897,6 +906,16 @@ export default function InvoiceCleanupPage() {
       {result && !result.dryRun && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">✅ Result</h2>
+          {result.partial && (result.remainingInvoiceNumbers?.length ?? 0) > 0 && (
+            <div className="mb-4 p-4 bg-blue-900/20 border border-blue-600/30 rounded">
+              <p className="text-blue-200 text-sm font-medium mb-1">
+                Partial run (avoids 504 timeout). Processed first batch.
+              </p>
+              <p className="text-silver-300 text-sm">
+                <strong>{result.remainingInvoiceNumbers!.length} invoices</strong> remaining. Click &quot;Continue Stage 1&quot; above to process the next batch.
+              </p>
+            </div>
+          )}
           {result.stoppedEarly && (
             <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
               <p className="text-amber-400 text-sm font-medium mb-1">

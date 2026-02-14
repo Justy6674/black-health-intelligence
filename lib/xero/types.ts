@@ -179,6 +179,8 @@ export interface InvoiceCleanupRequest {
   verifyOnly?: boolean
   /** For verifyOnly: expected status per invoice to compare (e.g. AUTHORISED after un-pay) */
   expectedByInvoice?: Record<string, string>
+  /** Stage 1 un-pay: process at most N invoices per run to avoid 504 timeout. Default 50. */
+  batchLimit?: number
 }
 
 export type InvoiceCleanupAction = 'DELETE' | 'VOID' | 'UNPAY_VOID' | 'SKIP'
@@ -217,6 +219,10 @@ export interface InvoiceCleanupResponse {
   user?: string
   /** Per-invoice success/fail for staged flow and Retry failed only */
   results?: InvoiceCleanupResultItem[]
+  /** Stage 1 un-pay was partial due to batchLimit */
+  partial?: boolean
+  /** Invoice numbers still to process (for "Continue" after partial) */
+  remainingInvoiceNumbers?: string[]
 }
 
 /** Verify endpoint: current status from Xero for given invoice numbers */

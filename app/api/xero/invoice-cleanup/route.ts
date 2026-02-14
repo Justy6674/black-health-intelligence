@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/xero/auth'
+
+/** Max 5 min to avoid 504. Stage 1 un-pay is rate-limited; use batchLimit for large runs. */
+export const maxDuration = 300
 import {
   getInvoicesByNumbersWithStatus,
   fetchInvoicesBeforeDate,
@@ -55,7 +58,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: InvoiceCleanupRequest = await request.json()
-    const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly } = body
+    const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit } = body
+    const unpayBatchLimit = batchLimit ?? 50
 
     // ── Verify only: re-fetch from Xero, return current status ──
     if (verifyOnly && Array.isArray(invoiceNumbers) && invoiceNumbers.length > 0) {
@@ -153,8 +157,10 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Un-pay PAID invoices (only when step is unpay or all)
     const paidWipeVoidNumbers: string[] = []
-    if ((runStep === 'unpay' || runStep === 'all') && toPaidWipeItems.length > 0) {
-      for (const item of toPaidWipeItems) {
+    const toUnpayBatched = toPaidWipeItems.slice(0, runStep === 'unpay' || runStep === 'all' ? unpayBatchLimit : undefined)
+    const remainingAfterUnpay = toPaidWipeItems.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
+    if ((runStep === 'unpay' || runStep === 'all') && toUnpayBatched.length > 0) {
+      for (const item of toUnpayBatched) {
         if (stoppedEarly) break
         const inv = await getInvoiceByNumber(item.invoiceNumber)
         if (!inv) {
@@ -249,6 +255,10 @@ export async function POST(request: NextRequest) {
       stoppedEarly,
       user: auth.user,
       results,
+      ...(remainingAfterUnpay.length > 0 && {
+        partial: true,
+        remainingInvoiceNumbers: remainingAfterUnpay,
+      }),
     }
 
     console.log(
