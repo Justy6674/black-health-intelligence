@@ -147,6 +147,7 @@ export default function InvoiceCleanupPage() {
   const [inputMode, setInputMode] = useState<InvoiceCleanupInputMode>('fetch')
   const [cutoffDate, setCutoffDate] = useState(DEFAULT_CUTOFF)
   const [csvInvoiceNumbers, setCsvInvoiceNumbers] = useState<string[]>([])
+  const [includePaid, setIncludePaid] = useState(false)
   const [invoices, setInvoices] = useState<InvoiceCleanupItem[]>([])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<InvoiceCleanupResponse | null>(null)
@@ -242,11 +243,12 @@ export default function InvoiceCleanupPage() {
     try {
       const body =
         inputMode === 'fetch'
-          ? { inputMode: 'fetch' as const, cutoffDate, dryRun: true }
+          ? { inputMode: 'fetch' as const, cutoffDate, dryRun: true, includePaid }
           : {
               inputMode: 'csv' as const,
               invoiceNumbers: csvInvoiceNumbers,
               dryRun: true,
+              includePaid,
             }
       const res = await fetch('/api/xero/invoice-cleanup', {
         method: 'POST',
@@ -266,7 +268,7 @@ export default function InvoiceCleanupPage() {
     } finally {
       setLoading(false)
     }
-  }, [inputMode, cutoffDate, csvInvoiceNumbers])
+  }, [inputMode, cutoffDate, csvInvoiceNumbers, includePaid])
 
   const executeCleanup = useCallback(
     async (dryRun: boolean) => {
@@ -286,11 +288,12 @@ export default function InvoiceCleanupPage() {
 
       try {
         const body = inputMode === 'fetch'
-          ? { inputMode: 'fetch' as const, cutoffDate, dryRun }
+          ? { inputMode: 'fetch' as const, cutoffDate, dryRun, includePaid }
           : {
               inputMode: 'csv' as const,
               invoiceNumbers: invoices.map((i) => i.invoiceNumber),
               dryRun,
+              includePaid,
             }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
@@ -330,7 +333,7 @@ export default function InvoiceCleanupPage() {
         setLoading(false)
       }
     },
-    [inputMode, cutoffDate, invoices, hasDryRunThisSession, phraseMatches, requiredPhrase]
+    [inputMode, cutoffDate, invoices, hasDryRunThisSession, phraseMatches, requiredPhrase, includePaid]
   )
 
   /** Execute a single stage (unpay, void, delete). Pass invoiceNumbers for retry failed only. */
@@ -352,8 +355,8 @@ export default function InvoiceCleanupPage() {
       try {
         const body =
           inputMode === 'fetch' && !retryNumbers?.length
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: 75 }
-            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: 75 }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: 75, includePaid }
+            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: 75, includePaid }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -393,7 +396,7 @@ export default function InvoiceCleanupPage() {
         setLoadingMessage(null)
       }
     },
-    [inputMode, cutoffDate, invoices]
+    [inputMode, cutoffDate, invoices, includePaid]
   )
 
   /** Run Stage 2 (void) with auto-continue: un-pays then voids, loops until all done. */
@@ -427,8 +430,8 @@ export default function InvoiceCleanupPage() {
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: 75 }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: 75 }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: 75, includePaid }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: 75, includePaid }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -518,8 +521,8 @@ export default function InvoiceCleanupPage() {
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 75 }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 75 }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 75, includePaid }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 75, includePaid }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -580,7 +583,7 @@ export default function InvoiceCleanupPage() {
       setLoading(false)
       setLoadingMessage(null)
     }
-  }, [inputMode, cutoffDate, invoices])
+  }, [inputMode, cutoffDate, invoices, includePaid])
 
   /** Verify current status in Xero for given invoice numbers */
   const verifyInXero = useCallback(
@@ -670,7 +673,7 @@ export default function InvoiceCleanupPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Xero Invoice Cleanup</h1>
           <p className="text-silver-400 text-sm">
-            DRAFT: delete. AUTHORISED/PAID: void (run Stage 1 first if PAID or void fails with &quot;payments allocated&quot;).
+            Awaiting Payment / Authorised: void. PAID: tick Include PAID to un-pay then void. DRAFT: delete.
           </p>
         </div>
         <div className="ml-auto">
@@ -765,6 +768,26 @@ export default function InvoiceCleanupPage() {
             )}
           </div>
         )}
+
+        <div className="mt-4 flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includePaid}
+              onChange={(e) => {
+                setIncludePaid(e.target.checked)
+                setResult(null)
+                setInvoices([])
+                setHasDryRunThisSession(false)
+              }}
+              className="text-slate-blue"
+            />
+            <span className="text-sm text-silver-300">Include PAID (un-pay then void)</span>
+          </label>
+          <span className="text-silver-500 text-xs">
+            Off = only Awaiting Payment / Authorised
+          </span>
+        </div>
 
         <div className="mt-4">
           <button

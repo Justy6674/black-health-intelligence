@@ -27,12 +27,15 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-function categorise(inv: XeroInvoiceSummary): InvoiceCleanupAction {
+function categorise(inv: XeroInvoiceSummary, includePaid: boolean): InvoiceCleanupAction {
   const s = inv.status.toUpperCase().replace(/\s+/g, ' ')
   if (s === 'DRAFT' || s === 'SUBMITTED') return 'DELETE'
-  // AUTHORISED/AWAITING/PAID can all have payments or credit notes allocated.
-  // Xero list API doesn't return that; we must un-pay before void. No direct void path.
-  if (s === 'AUTHORISED' || s === 'AUTHORIZED' || s.includes('AWAITING') || s === 'PAID') return 'UNPAY_VOID'
+  // VOIDED/DELETED — skip
+  if (s === 'VOIDED' || s === 'DELETED') return 'SKIP'
+  // AUTHORISED / Awaiting Payment — safe to void (we un-pay first in case of hidden allocations)
+  if (s === 'AUTHORISED' || s === 'AUTHORIZED' || s.includes('AWAITING')) return 'UNPAY_VOID'
+  // PAID — only include if user opted in (un-pay then void)
+  if (s === 'PAID') return includePaid ? 'UNPAY_VOID' : 'SKIP'
   return 'SKIP'
 }
 
@@ -59,8 +62,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: InvoiceCleanupRequest = await request.json()
-    const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit } = body
+    const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit, includePaid } = body
     const unpayBatchLimit = batchLimit ?? 75
+    const includePaidInvoices = includePaid ?? (inputMode === 'fetch')
 
     // ── Verify only: re-fetch from Xero, return current status ──
     if (verifyOnly && Array.isArray(invoiceNumbers) && invoiceNumbers.length > 0) {
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
     }
 
     const items: InvoiceCleanupItem[] = invoices.map((inv) => {
-      const action = categorise(inv)
+      const action = categorise(inv, includePaidInvoices)
       return toItem(inv, action)
     })
 
