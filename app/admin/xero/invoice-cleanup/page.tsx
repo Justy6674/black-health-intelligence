@@ -337,8 +337,8 @@ export default function InvoiceCleanupPage() {
       try {
         const body =
           inputMode === 'fetch' && !retryNumbers?.length
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 20 : undefined }
-            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 20 : undefined }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 10 : undefined }
+            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 10 : undefined }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -406,8 +406,8 @@ export default function InvoiceCleanupPage() {
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 20 }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 20 }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 10 }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 10 }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -794,7 +794,7 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay PAID</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Batches run automatically (20 per API call) — one click processes all, then run Stage 2 once to bulk void.
+                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Batches run automatically (10 per call to stay under 60s) — one click processes all, then run Stage 2 once to bulk void.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
