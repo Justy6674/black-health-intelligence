@@ -9,8 +9,8 @@ export const metadata: Metadata = {
     description: 'Learn about Justin Black, Nurse Practitioner & Health-Tech Founder, and the team behind Black Health Intelligence - a healthcare innovation portfolio transforming healthcare delivery.',
 }
 
-// Cache for 1 hour since content is static
-export const revalidate = 3600
+// Dynamic rendering — framer-motion requires client-side React context
+export const dynamic = 'force-dynamic'
 
 export default function AboutPage() {
     return (

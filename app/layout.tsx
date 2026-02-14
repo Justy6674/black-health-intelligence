@@ -3,6 +3,8 @@ import { Inter, Chakra_Petch } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
+export const dynamic = 'force-dynamic'
+
 const inter = Inter({
     subsets: ["latin"],
     variable: '--font-inter',

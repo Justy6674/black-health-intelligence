@@ -24,7 +24,7 @@ const TAB_CONFIG: { key: Tab; label: string }[] = [
 function BudgetPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const activeTab = (searchParams.get('tab') as Tab) || 'overview'
+  const activeTab = (searchParams?.get('tab') as Tab) || 'overview'
 
   const setTab = (tab: Tab) => {
     router.replace(`/admin/budget${tab === 'overview' ? '' : `?tab=${tab}`}`)
