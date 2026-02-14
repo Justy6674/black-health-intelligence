@@ -847,7 +847,15 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 2: Void</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Voids all AUTHORISED invoices in one bulk run ({toVoid + toUnpayVoid} total). Run this <strong>only after</strong> Stage 1 has finished — un-pay runs automatically, then void once.
+                    {toUnpayVoid > 0 ? (
+                      <>
+                        Voids all AUTHORISED invoices in one bulk run ({toVoid + toUnpayVoid} total). Run this <strong>only after</strong> Stage 1 has finished — un-pay first, then void once.
+                      </>
+                    ) : (
+                      <>
+                        Voids {toVoid} AUTHORISED invoice(s) directly. No un-paying needed — these have no payments.
+                      </>
+                    )}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
