@@ -223,6 +223,8 @@ export interface InvoiceCleanupResponse {
   partial?: boolean
   /** Invoice numbers still to process (for "Continue" after partial) */
   remainingInvoiceNumbers?: string[]
+  /** When this partial batch completed (ISO string) */
+  processedAt?: string
 }
 
 /** Verify endpoint: current status from Xero for given invoice numbers */

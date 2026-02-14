@@ -95,9 +95,9 @@ function formatAmount(n: number): string {
 }
 
 function actionLabel(a: InvoiceCleanupAction): string {
-  if (a === 'DELETE') return 'Delete'
-  if (a === 'VOID') return 'Void'
-  if (a === 'UNPAY_VOID') return 'Un-pay + Void'
+  if (a === 'DELETE') return 'To delete'
+  if (a === 'VOID') return 'To void'
+  if (a === 'UNPAY_VOID') return 'Un-pay then void'
   return 'Skip'
 }
 
@@ -560,8 +560,8 @@ export default function InvoiceCleanupPage() {
           <h2 className="text-lg font-semibold text-white mb-3">
             Step 2 — Preview ({invoices.length} invoices)
           </h2>
-          <p className="text-silver-400 text-xs mb-3">
-            Status = current state in Xero. Action = what we will do.
+          <p className="text-silver-400 text-sm mb-3">
+            Status = current state in Xero. Planned action = what will happen when you run the stage.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
             <div className="p-3 bg-charcoal/50 rounded border border-silver-700/30">
@@ -592,7 +592,7 @@ export default function InvoiceCleanupPage() {
                   <th className="py-2 pr-4">Invoice #</th>
                   <th className="py-2 pr-4">Date</th>
                   <th className="py-2 pr-4">Status</th>
-                  <th className="py-2 pr-4">Action</th>
+                  <th className="py-2 pr-4">Planned action</th>
                   <th className="py-2 pr-4 text-right">Amount</th>
                 </tr>
               </thead>
@@ -909,11 +909,25 @@ export default function InvoiceCleanupPage() {
           {result.partial && (result.remainingInvoiceNumbers?.length ?? 0) > 0 && (
             <div className="mb-4 p-4 bg-blue-900/20 border border-blue-600/30 rounded">
               <p className="text-blue-200 text-sm font-medium mb-1">
-                Partial run (avoids 504 timeout). Processed first batch.
+                Partial run (avoids 504 timeout).
               </p>
-              <p className="text-silver-300 text-sm">
-                <strong>{result.remainingInvoiceNumbers!.length} invoices</strong> remaining. Click &quot;Continue Stage 1&quot; above to process the next batch.
+              <p className="text-silver-300 text-sm mb-1">
+                Processed {result.results?.filter((r) => r.action === 'UNPAY_VOID' && r.success).length ?? 0} invoices this run. <strong>{result.remainingInvoiceNumbers!.length} remaining</strong>.
               </p>
+              <p className="text-silver-400 text-xs mb-2">
+                Click &quot;Continue Stage 1&quot; above to process the next batch.
+                {result.processedAt && (
+                  <> Last batch: {new Date(result.processedAt).toLocaleTimeString()}</>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={loadPreview}
+                disabled={loading}
+                className="text-xs text-slate-blue hover:underline disabled:opacity-50"
+              >
+                Refresh preview to see current status in Xero
+              </button>
             </div>
           )}
           {result.stoppedEarly && (
@@ -989,7 +1003,7 @@ export default function InvoiceCleanupPage() {
                   <thead className="text-silver-400 border-b border-silver-700/30">
                     <tr>
                       <th className="py-1.5 pr-4">Invoice #</th>
-                      <th className="py-1.5 pr-4">Action</th>
+                      <th className="py-1.5 pr-4">Planned action</th>
                       <th className="py-1.5 pr-4">Result</th>
                     </tr>
                   </thead>

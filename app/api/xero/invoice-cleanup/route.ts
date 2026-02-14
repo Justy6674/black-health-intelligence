@@ -259,6 +259,7 @@ export async function POST(request: NextRequest) {
       ...(remainingAfterUnpay.length > 0 && {
         partial: true,
         remainingInvoiceNumbers: remainingAfterUnpay,
+        processedAt: new Date().toISOString(),
       }),
     }
 
