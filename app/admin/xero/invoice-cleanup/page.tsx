@@ -160,6 +160,7 @@ export default function InvoiceCleanupPage() {
   const [executionMode, setExecutionMode] = useState<'all' | 'staged'>('staged')
   const [verifyResult, setVerifyResult] = useState<InvoiceCleanupVerifyResponse | null>(null)
   const [lastStageRun, setLastStageRun] = useState<'unpay' | 'void' | 'delete' | null>(null)
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null)
 
   const [xeroStatus, setXeroStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [xeroOrgName, setXeroOrgName] = useState<string | null>(null)
@@ -213,6 +214,7 @@ export default function InvoiceCleanupPage() {
 
   const loadPreview = useCallback(async () => {
     setLoading(true)
+    setLoadingMessage(null)
     setError('')
     setResult(null)
     setInvoices([])
@@ -263,6 +265,7 @@ export default function InvoiceCleanupPage() {
         return
       }
       setLoading(true)
+      setLoadingMessage(null)
       setError('')
       setShowConfirmModal(false)
 
@@ -327,6 +330,7 @@ export default function InvoiceCleanupPage() {
       const actualNums = retryNumbers && retryNumbers.length > 0 ? retryNumbers : nums
       if (actualNums.length === 0) return
       setLoading(true)
+      setLoadingMessage(null)
       setError('')
       setVerifyResult(null)
       setLastStageRun(stage)
@@ -371,15 +375,106 @@ export default function InvoiceCleanupPage() {
         }
       } finally {
         setLoading(false)
+        setLoadingMessage(null)
       }
     },
     [inputMode, cutoffDate, invoices]
   )
 
+  /** Run Stage 1 (un-pay) with auto-continue: keeps calling API until all batches done. */
+  const executeStageUnpayWithAutoContinue = useCallback(async () => {
+    const nums = invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber)
+    if (nums.length === 0) return
+    setLoading(true)
+    setError('')
+    setVerifyResult(null)
+    setLastStageRun('unpay')
+    setLoadingMessage('Un-paying batch 1…')
+    let remaining = [...nums]
+    let batchNum = 0
+    let accPaymentsRemoved = 0
+    const accErrors: Array<{ invoiceNumber: string; message: string }> = []
+    const accResults: InvoiceCleanupResultItem[] = []
+    let lastData: InvoiceCleanupResponse | null = null
+    try {
+      while (remaining.length > 0) {
+        batchNum++
+        setLoadingMessage(
+          batchNum === 1
+            ? `Un-paying batch 1…`
+            : `Batch ${batchNum} — ${remaining.length} remaining…`
+        )
+        const body =
+          inputMode === 'fetch' && batchNum === 1
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 20 }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 20 }
+        const res = await fetch('/api/xero/invoice-cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: InvoiceCleanupResponse = await res.json()
+        lastData = data
+        accPaymentsRemoved += data.paymentsRemoved
+        accErrors.push(...data.errors)
+        accResults.push(...(data.results ?? []))
+        setResult({
+          ...data,
+          paymentsRemoved: accPaymentsRemoved,
+          errors: accErrors,
+          results: accResults,
+        })
+        if (data.user && batchNum === 1) {
+          saveAuditEntry({
+            timestamp: new Date().toISOString(),
+            user: data.user,
+            inputMode,
+            cutoffDate: data.cutoffDate,
+            total: data.invoices.length,
+            deleted: data.deleted,
+            voided: data.voided,
+            paymentsRemoved: accPaymentsRemoved,
+            failed: accErrors.length,
+          })
+        }
+        if (
+          !data.partial ||
+          !data.remainingInvoiceNumbers ||
+          data.remainingInvoiceNumbers.length === 0 ||
+          data.stoppedEarly
+        ) {
+          break
+        }
+        remaining = data.remainingInvoiceNumbers
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+      if (lastData?.user && batchNum > 1) {
+        setAuditHistory(loadAuditHistory())
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      if (msg.includes('504')) {
+        setError(
+          'Request timed out (60s). Some invoices may have been processed. Click "Load & Preview" to see current state in Xero, then run the stage again for remaining work.'
+        )
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setLoading(false)
+      setLoadingMessage(null)
+    }
+  }, [inputMode, cutoffDate, invoices])
+
   /** Verify current status in Xero for given invoice numbers */
   const verifyInXero = useCallback(
     async (invoiceNumbers: string[], expectedByInvoice?: Record<string, string>) => {
       setLoading(true)
+      setLoadingMessage(null)
       setError('')
       try {
         const res = await fetch('/api/xero/invoice-cleanup', {
@@ -448,7 +543,9 @@ export default function InvoiceCleanupPage() {
       {loading && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/70">
           <div className="w-10 h-10 border-2 border-slate-blue border-t-transparent rounded-full animate-spin" />
-          <p className="mt-4 text-white font-medium">Processing…</p>
+          <p className="mt-4 text-white font-medium">
+            {loadingMessage ?? 'Processing…'}
+          </p>
           <p className="mt-1 text-sm text-silver-400">
             Un-paying and voiding can take several minutes. Do not close this page.
           </p>
@@ -697,11 +794,11 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay PAID</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Processes 20 per run — click &quot;Continue&quot; until all are done, then run Stage 2 once to bulk void.
+                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Batches run automatically (20 per API call) — one click processes all, then run Stage 2 once to bulk void.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => executeStage('unpay')}
+                      onClick={() => executeStageUnpayWithAutoContinue()}
                       disabled={loading || !hasDryRunThisSession || !phraseMatches}
                       className="px-4 py-2 bg-red-700/80 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 text-sm font-medium"
                     >
@@ -750,7 +847,7 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 2: Void</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Voids all AUTHORISED invoices in one bulk run ({toVoid + toUnpayVoid} total). Run this <strong>only after</strong> you have finished all Stage 1 batches — un-pay everything first (click Continue until done), then void once.
+                    Voids all AUTHORISED invoices in one bulk run ({toVoid + toUnpayVoid} total). Run this <strong>only after</strong> Stage 1 has finished — un-pay runs automatically, then void once.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
