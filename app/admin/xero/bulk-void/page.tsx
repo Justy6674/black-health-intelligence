@@ -357,7 +357,7 @@ export default function BulkVoidPage() {
       setError(`Type exactly: ${PAID_WIPE_PHRASE}`)
       return
     }
-    if (cutoffDate >= '2026-01-01') {
+    if (cutoffDate > '2026-01-01') {
       setError('PAID wipe only for cutoff before 2026-01-01.')
       return
     }
@@ -408,7 +408,7 @@ export default function BulkVoidPage() {
 
   const paidWipePhraseMatches = paidWipePhrase.trim().toUpperCase() === PAID_WIPE_PHRASE
   const showPaidWipeMode =
-    paidInRange.length > 0 && cutoffDate < '2026-01-01'
+    paidInRange.length > 0 && cutoffDate <= '2026-01-01'
 
   return (
     <div>
@@ -811,7 +811,21 @@ export default function BulkVoidPage() {
           </div>
           {result.errors.length > 0 && (
             <div className="mt-3">
-              <h3 className="text-sm font-medium text-red-400 mb-2">Errors:</h3>
+              <h3 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-2">
+                Errors:
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = result.errors
+                      .map((e) => `${e.invoiceNumber}: ${e.message}`)
+                      .join('\n')
+                    void navigator.clipboard.writeText(text)
+                  }}
+                  className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
+                >
+                  Copy
+                </button>
+              </h3>
               <div className="max-h-48 overflow-y-auto text-xs font-mono space-y-1">
                 {result.errors.map((e, i) => (
                   <div key={i} className="text-red-300">
