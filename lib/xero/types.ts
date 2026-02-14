@@ -30,6 +30,24 @@ export interface BulkVoidAuditEntry {
   voided: number
   failed: number
   dryRun: boolean
+  type?: 'bulk-void' | 'paid-wipe'
+  paymentsRemoved?: number
+}
+
+export interface PaidWipeRequest {
+  invoiceNumbers: string[]
+  dryRun?: boolean
+}
+
+export interface PaidWipeResponse {
+  total: number
+  attempted: number
+  voided: number
+  errors: { invoiceNumber: string; message: string }[]
+  paymentsRemoved: Array<{ invoiceNumber: string; paymentIds: string[] }>
+  dryRun: boolean
+  stoppedEarly?: boolean
+  user?: string
 }
 
 // ── Clearing‑account types ──

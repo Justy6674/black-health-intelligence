@@ -255,6 +255,68 @@ export async function getOrganisation(): Promise<Record<string, unknown>> {
   return res.json()
 }
 
+// ── PAID wipe: fetch invoice with payments, delete payments ──
+
+export interface InvoiceWithPayments {
+  invoiceId: string
+  invoiceNumber: string
+  status: string
+  date: string
+  payments: Array<{ paymentId: string; amount: number; date: string }>
+}
+
+/** Fetch a single invoice by number, including Payments. Returns null if not found. */
+export async function getInvoiceByNumber(invoiceNumber: string): Promise<InvoiceWithPayments | null> {
+  const headers = await xeroHeaders()
+  const escaped = invoiceNumber.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const where = `InvoiceNumber=="${escaped}"`
+  const url = `${XERO_API_BASE}/Invoices?where=${encodeURIComponent(where)}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`Xero Invoices ${res.status}: ${await res.text()}`)
+  const data = await res.json()
+  const invoices: Array<Record<string, unknown>> = data.Invoices ?? []
+  const inv = invoices[0]
+  if (!inv) return null
+  const payments: Array<Record<string, unknown>> = (inv.Payments as Array<Record<string, unknown>>) ?? []
+  return {
+    invoiceId: inv.InvoiceID as string,
+    invoiceNumber: (inv.InvoiceNumber as string) ?? '',
+    status: (inv.Status as string) ?? '',
+    date: ((inv.Date as string) ?? '').slice(0, 10),
+    payments: payments.map((p) => ({
+      paymentId: p.PaymentID as string,
+      amount: Number(p.Amount ?? 0),
+      date: (p.Date as string) ?? '',
+    })),
+  }
+}
+
+/**
+ * Attempt to delete a payment (remove from invoice). Xero may or may not support this.
+ * POST /Payments with PaymentID and Status: DELETED.
+ */
+export async function deletePayment(paymentId: string): Promise<{ success: boolean; message: string }> {
+  const headers = await xeroHeaders()
+  const body = { PaymentID: paymentId, Status: 'DELETED' }
+  const res = await fetch(`${XERO_API_BASE}/Payments`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    return { success: false, message: `Xero API ${res.status}: ${text.slice(0, 300)}` }
+  }
+  const data = await res.json()
+  const payments: Array<Record<string, unknown>> = data.Payments ?? []
+  const p = payments[0]
+  if (p?.HasErrors) {
+    const msgs = ((p.ValidationErrors as Array<{ Message: string }>) ?? []).map((e) => e.Message).join('; ')
+    return { success: false, message: msgs || 'Validation error' }
+  }
+  return { success: true, message: 'Payment removed' }
+}
+
 // ── Feature 2: Clearing‑account reconciliation ──
 
 /**

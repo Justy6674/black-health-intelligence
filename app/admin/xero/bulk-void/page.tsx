@@ -2,9 +2,15 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import type { ParsedInvoice, BulkVoidResponse, BulkVoidAuditEntry } from '@/lib/xero/types'
+import type {
+  ParsedInvoice,
+  BulkVoidResponse,
+  BulkVoidAuditEntry,
+  PaidWipeResponse,
+} from '@/lib/xero/types'
 
 const AUDIT_STORAGE_KEY = 'xero_bulk_void_history'
+const PAID_WIPE_PHRASE = 'WIPE PAID BEFORE 2026-01-01'
 const MAX_CUTOFF = '2026-01-01' // Do not allow cutoff after this without confirmation
 
 // ── CSV helpers ──
@@ -140,7 +146,7 @@ function isBeforeCutoff(dateStr: string, cutoff: string): boolean {
   return parsed < cutoffDate
 }
 
-/** AUTHORISED / Awaiting Payment only. PAID/DRAFT/VOIDED = not safe to void. */
+/** AUTHORISED / Awaiting Payment only. PAID/DRAFT/VOIDED = not safe to void by default. */
 function isVoidableStatus(status: string | undefined): boolean {
   if (!status) return true
   const s = status.toUpperCase().replace(/\s+/g, ' ')
@@ -150,6 +156,11 @@ function isVoidableStatus(status: string | undefined): boolean {
     s.includes('AWAITING') ||
     s.includes('AUTHOR')
   )
+}
+
+function isPaidStatus(status: string | undefined): boolean {
+  if (!status) return false
+  return status.toUpperCase().includes('PAID')
 }
 
 function formatAmount(n: number): string {
@@ -200,14 +211,28 @@ export default function BulkVoidPage() {
   const [xeroOrgName, setXeroOrgName] = useState<string | null>(null)
   const [xeroError, setXeroError] = useState<string | null>(null)
   const [parseMeta, setParseMeta] = useState<ParseResult['parseMeta']>(null)
+  const [includePaid, setIncludePaid] = useState(false)
+  const [paidWipeMode, setPaidWipeMode] = useState(false)
+  const [paidWipePhrase, setPaidWipePhrase] = useState('')
+  const [hasPaidWipeDryRun, setHasPaidWipeDryRun] = useState(false)
 
-  // Strict filtering: date < cutoff, status = AUTHORISED/Awaiting Payment only
+  // Strict filtering: date < cutoff
   const dateFiltered = allInvoices.filter((inv) => isBeforeCutoff(inv.date, cutoffDate))
-  const toVoid = dateFiltered.filter((inv) => isVoidableStatus(inv.status))
-  const skipped = dateFiltered.filter((inv) => !isVoidableStatus(inv.status))
+  const unpaidVoidable = dateFiltered.filter((inv) => isVoidableStatus(inv.status))
+  const paidInRange = dateFiltered.filter((inv) => isPaidStatus(inv.status))
+  const toVoid = includePaid
+    ? [...unpaidVoidable, ...paidInRange]
+    : unpaidVoidable
+  const skipped = dateFiltered.filter(
+    (inv) => !isVoidableStatus(inv.status) && !(includePaid && isPaidStatus(inv.status))
+  )
 
+  const paidCount = toVoid.filter((inv) => isPaidStatus(inv.status)).length
   const totalAmount = toVoid.reduce((sum, inv) => sum + inv.amount, 0)
-  const requiredPhrase = `VOID ${toVoid.length} INVOICES TOTAL ${formatAmount(totalAmount)}`
+  const requiredPhrase =
+    paidCount > 0
+      ? `VOID ${toVoid.length} INVOICES INCLUDING ${paidCount} PAID TOTAL ${formatAmount(totalAmount)}`
+      : `VOID ${toVoid.length} INVOICES TOTAL ${formatAmount(totalAmount)}`
   const phraseMatches =
     confirmationPhrase.trim().toUpperCase() === requiredPhrase.trim().toUpperCase()
 
@@ -245,7 +270,9 @@ export default function BulkVoidPage() {
     setResult(null)
     setError('')
     setHasDryRunThisSession(false)
+    setHasPaidWipeDryRun(false)
     setConfirmationPhrase('')
+    setPaidWipePhrase('')
     setParseMeta(null)
     const file = e.target.files?.[0]
     if (!file) return
@@ -320,6 +347,69 @@ export default function BulkVoidPage() {
     }
   }
 
+  const callPaidWipe = async (dryRun: boolean) => {
+    if (paidInRange.length === 0) return
+    if (!dryRun && !hasPaidWipeDryRun) {
+      setError('You must run a dry-run first for PAID wipe.')
+      return
+    }
+    if (!dryRun && paidWipePhrase.trim().toUpperCase() !== PAID_WIPE_PHRASE) {
+      setError(`Type exactly: ${PAID_WIPE_PHRASE}`)
+      return
+    }
+    if (cutoffDate >= '2026-01-01') {
+      setError('PAID wipe only for cutoff before 2026-01-01.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    setResult(null)
+
+    try {
+      const res = await fetch('/api/xero/paid-wipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceNumbers: paidInRange.map((i) => i.invoiceNumber),
+          dryRun,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Request failed (${res.status})`)
+      }
+
+      const data: PaidWipeResponse = await res.json()
+      setResult(data as BulkVoidResponse)
+      if (dryRun) setHasPaidWipeDryRun(true)
+      if (!dryRun && data.user) {
+        const paymentsRemovedCount = data.paymentsRemoved?.reduce((s, p) => s + p.paymentIds.length, 0) ?? 0
+        const entry: BulkVoidAuditEntry = {
+          timestamp: new Date().toISOString(),
+          user: data.user,
+          cutoffDate,
+          attempted: data.attempted,
+          voided: data.voided,
+          failed: data.errors.length,
+          dryRun: false,
+          type: 'paid-wipe',
+          paymentsRemoved: paymentsRemovedCount,
+        }
+        saveAuditEntry(entry)
+        setAuditHistory(loadAuditHistory())
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const paidWipePhraseMatches = paidWipePhrase.trim().toUpperCase() === PAID_WIPE_PHRASE
+  const showPaidWipeMode =
+    paidInRange.length > 0 && cutoffDate < '2026-01-01'
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -383,6 +473,7 @@ export default function BulkVoidPage() {
               setCutoffDate(e.target.value)
               setResult(null)
               setHasDryRunThisSession(false)
+              setHasPaidWipeDryRun(false)
             }}
             className="bg-charcoal border border-silver-700/30 rounded px-3 py-2 text-white"
           />
@@ -406,7 +497,11 @@ export default function BulkVoidPage() {
           )}
           <div className="mt-4 p-4 bg-charcoal/50 rounded border border-silver-700/30">
             <div className="text-white font-medium">
-              {toVoid.length} invoices will be voided.
+              {toVoid.length} invoices will be voided
+              {paidCount > 0 && (
+                <span className="text-amber-400"> (including {paidCount} PAID)</span>
+              )}
+              .
             </div>
             <div className="text-silver-300 text-sm mt-1">
               Total value affected: {formatAmount(totalAmount)}
@@ -427,6 +522,113 @@ export default function BulkVoidPage() {
                   <div className="text-silver-500">… and {skipped.length - 50} more</div>
                 )}
               </div>
+            </div>
+          )}
+          {paidInRange.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <span className="text-sm text-silver-400">
+                {paidInRange.length} PAID invoices in range
+                {!includePaid && ' (skipped by default)'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const header = 'InvoiceNumber,Date,Amount,Status\n'
+                  const rows = paidInRange
+                    .map(
+                      (i) =>
+                        `"${i.invoiceNumber}","${i.date}",${i.amount},"${(i.status ?? '').replace(/"/g, '""')}"`
+                    )
+                    .join('\n')
+                  const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8' })
+                  const a = document.createElement('a')
+                  a.href = URL.createObjectURL(blob)
+                  a.download = `skipped-paid-invoices-${cutoffDate}-${new Date().toISOString().slice(0, 10)}.csv`
+                  a.click()
+                  URL.revokeObjectURL(a.href)
+                }}
+                className="px-3 py-1.5 text-sm rounded bg-slate-blue/20 text-white hover:bg-slate-blue/40 transition-colors"
+              >
+                Download skipped PAID as CSV
+              </button>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includePaid}
+                  onChange={(e) => {
+                    setIncludePaid(e.target.checked)
+                    setResult(null)
+                    setHasDryRunThisSession(false)
+                    setConfirmationPhrase('')
+                  }}
+                  className="rounded border-silver-600 bg-charcoal text-red-500"
+                />
+                <span className="text-sm text-amber-400">
+                  Include PAID (attempt void anyway — Xero may reject; use for pre-2026 cleanup)
+                </span>
+              </label>
+              {includePaid && (
+                <span className="text-sm text-red-400 font-medium">
+                  PAID included — type confirmation phrase
+                </span>
+              )}
+            </div>
+          )}
+
+          {showPaidWipeMode && (
+            <div className="mt-4 p-4 bg-red-900/20 border border-red-600/40 rounded">
+              <h3 className="text-sm font-bold text-red-400 mb-2">Pre-2026 PAID wipe (advanced)</h3>
+              <p className="text-xs text-silver-400 mb-3">
+                This will attempt to remove payments from {paidInRange.length} PAID invoices, then void them.
+                Use only for pre-2026 cleanup. Xero may reject payment removal.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paidWipeMode}
+                    onChange={(e) => {
+                      setPaidWipeMode(e.target.checked)
+                      setResult(null)
+                      setHasPaidWipeDryRun(false)
+                      setPaidWipePhrase('')
+                    }}
+                    className="rounded border-silver-600 bg-charcoal text-red-500"
+                  />
+                  <span className="text-sm text-amber-400">Enable PAID wipe mode</span>
+                </label>
+              </div>
+              {paidWipeMode && (
+                <>
+                  <p className="text-sm text-amber-200 mb-2">Type this exactly to enable Void:</p>
+                  <code className="block text-xs text-white mb-2 font-mono">{PAID_WIPE_PHRASE}</code>
+                  <input
+                    type="text"
+                    value={paidWipePhrase}
+                    onChange={(e) => setPaidWipePhrase(e.target.value)}
+                    placeholder="Paste or type the phrase above"
+                    className="w-full px-3 py-2 bg-charcoal border border-red-600/50 rounded text-white text-sm font-mono mb-3"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => callPaidWipe(true)}
+                      disabled={loading}
+                      className="px-4 py-2 bg-slate-blue/20 text-white rounded hover:bg-slate-blue/40 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      {loading ? 'Running…' : 'Dry Run PAID wipe'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => callPaidWipe(false)}
+                      disabled={loading || !hasPaidWipeDryRun || !paidWipePhraseMatches}
+                      className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 text-sm font-bold"
+                    >
+                      {loading ? 'Processing…' : `Wipe & Void ${paidInRange.length} PAID`}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -563,7 +765,13 @@ export default function BulkVoidPage() {
       {result && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">
-            {result.dryRun ? '🔍 Dry Run Result' : '✅ Void Result'}
+            {result.dryRun
+              ? (result as PaidWipeResponse).paymentsRemoved !== undefined
+                ? '🔍 PAID Wipe Dry Run Result'
+                : '🔍 Dry Run Result'
+              : (result as PaidWipeResponse).paymentsRemoved !== undefined
+                ? '✅ PAID Wipe Result'
+                : '✅ Void Result'}
           </h2>
           {result.stoppedEarly && (
             <p className="text-amber-400 text-sm mb-3">
@@ -587,6 +795,19 @@ export default function BulkVoidPage() {
               <div className="text-silver-400 text-xs">Errors</div>
               <div className="text-xl font-bold text-red-400">{result.errors.length}</div>
             </div>
+            {'paymentsRemoved' in result &&
+              Array.isArray((result as PaidWipeResponse).paymentsRemoved) &&
+              (result as PaidWipeResponse).paymentsRemoved!.length > 0 && (
+                <div>
+                  <div className="text-silver-400 text-xs">Payments removed</div>
+                  <div className="text-xl font-bold text-amber-400">
+                    {(result as PaidWipeResponse).paymentsRemoved!.reduce(
+                      (s, p) => s + p.paymentIds.length,
+                      0
+                    )}
+                  </div>
+                </div>
+              )}
           </div>
           {result.errors.length > 0 && (
             <div className="mt-3">
@@ -609,8 +830,11 @@ export default function BulkVoidPage() {
           <div className="space-y-2 text-xs font-mono text-silver-400 max-h-48 overflow-y-auto">
             {auditHistory.slice(0, 20).map((entry, i) => (
               <div key={i} className="border-b border-silver-700/20 pb-2">
-                {new Date(entry.timestamp).toLocaleString()} — {entry.user} — cutoff {entry.cutoffDate}
+                {new Date(entry.timestamp).toLocaleString()} — {entry.user}
+                {entry.type === 'paid-wipe' && ' [PAID wipe]'}
+                — cutoff {entry.cutoffDate}
                 — attempted {entry.attempted}, voided {entry.voided}, failed {entry.failed}
+                {entry.paymentsRemoved != null && `, payments removed ${entry.paymentsRemoved}`}
               </div>
             ))}
           </div>
