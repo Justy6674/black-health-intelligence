@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatDollars } from './shared'
 
 interface ATOReportData {
@@ -39,6 +39,121 @@ export default function ATOReport() {
   const [error, setError] = useState('')
   const [months, setMonths] = useState(3)
   const [debtAmount, setDebtAmount] = useState('')
+  const [copied, setCopied] = useState(false)
+  const reportRef = useRef<HTMLDivElement>(null)
+
+  const fmtDollars = (cents: number) => {
+    const abs = Math.abs(cents)
+    const sign = cents < 0 ? '-' : ''
+    return `${sign}$${(abs / 100).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  const copyReportToClipboard = useCallback(async () => {
+    if (!data) return
+    const lines: string[] = [
+      'STATEMENT OF FINANCIAL POSITION',
+      `Generated: ${new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      `Period: ${data.period.months}-month average (${data.period.from} to ${data.period.to})`,
+      '='.repeat(60),
+      '',
+      'INCOME',
+      `Justin (BLACK HEALTH INTELLI PTY LTD): ${fmtDollars(data.income.justin.weekly)}/wk | ${fmtDollars(data.income.justin.monthly)}/mo | ${fmtDollars(data.income.justin.annual)}/yr`,
+      `Bec (BLACK HEALTH INTELLI PTY LTD):    ${fmtDollars(data.income.bec.weekly)}/wk | ${fmtDollars(data.income.bec.monthly)}/mo | ${fmtDollars(data.income.bec.annual)}/yr`,
+      `Total Household Income:                ${fmtDollars(data.income.totalMonthly)}/mo | ${fmtDollars(data.income.totalAnnual)}/yr`,
+      '',
+      'MONTHLY EXPENSES (Average)',
+      ...data.expenses.categories.map(c => `  ${c.name}: ${fmtDollars(c.monthlyAverage)}`),
+      `  TOTAL: ${fmtDollars(data.expenses.totalMonthly)}`,
+    ]
+
+    if (data.businessExpenses.totalMonthly > 0) {
+      lines.push('', 'BUSINESS EXPENSES (Reclaimable from PTY LTD)')
+      for (const c of data.businessExpenses.categories) {
+        lines.push(`  ${c.category}: ${fmtDollars(c.monthlyAverage)}`)
+      }
+      lines.push(`  TOTAL RECLAIMABLE: ${fmtDollars(data.businessExpenses.totalMonthly)}`)
+    }
+
+    if (data.debts && data.debts.count > 0) {
+      lines.push('', 'OUTSTANDING DEBTS')
+      lines.push(`  Total Debt Balance: ${fmtDollars(data.debts.totalBalanceCents)}`)
+      lines.push(`  Total Min Payments (monthly): ${fmtDollars(data.debts.totalMinPaymentsCents)}`)
+      lines.push(`  Number of Debts: ${data.debts.count}`)
+    }
+
+    lines.push(
+      '', 'SUMMARY',
+      `  Monthly Income:              ${fmtDollars(data.summary.monthlyIncome)}`,
+      `  Monthly Expenses:           -${fmtDollars(data.summary.monthlyExpenses)}`,
+    )
+    if (data.summary.businessExpenseSavings > 0) {
+      lines.push(`  Business Expense Savings:   +${fmtDollars(data.summary.businessExpenseSavings)}`)
+    }
+    lines.push(
+      `  Monthly Surplus:             ${fmtDollars(data.summary.monthlySurplus)}`,
+      `  Weekly Surplus:              ${fmtDollars(data.summary.weeklySurplus)}`,
+    )
+
+    await navigator.clipboard.writeText(lines.join('\n'))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [data])
+
+  const downloadReport = useCallback(() => {
+    if (!data) return
+    // Trigger copy first to build the text, then download
+    const lines: string[] = [
+      'STATEMENT OF FINANCIAL POSITION',
+      `Generated: ${new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      `Period: ${data.period.months}-month average (${data.period.from} to ${data.period.to})`,
+      '='.repeat(60),
+      '',
+      'INCOME',
+      `Justin (BLACK HEALTH INTELLI PTY LTD): ${fmtDollars(data.income.justin.weekly)}/wk | ${fmtDollars(data.income.justin.monthly)}/mo | ${fmtDollars(data.income.justin.annual)}/yr`,
+      `Bec (BLACK HEALTH INTELLI PTY LTD):    ${fmtDollars(data.income.bec.weekly)}/wk | ${fmtDollars(data.income.bec.monthly)}/mo | ${fmtDollars(data.income.bec.annual)}/yr`,
+      `Total Household Income:                ${fmtDollars(data.income.totalMonthly)}/mo | ${fmtDollars(data.income.totalAnnual)}/yr`,
+      '',
+      'MONTHLY EXPENSES (Average)',
+      ...data.expenses.categories.map(c => `  ${c.name}: ${fmtDollars(c.monthlyAverage)}`),
+      `  TOTAL: ${fmtDollars(data.expenses.totalMonthly)}`,
+    ]
+
+    if (data.businessExpenses.totalMonthly > 0) {
+      lines.push('', 'BUSINESS EXPENSES (Reclaimable from PTY LTD)')
+      for (const c of data.businessExpenses.categories) {
+        lines.push(`  ${c.category}: ${fmtDollars(c.monthlyAverage)}`)
+      }
+      lines.push(`  TOTAL RECLAIMABLE: ${fmtDollars(data.businessExpenses.totalMonthly)}`)
+    }
+
+    if (data.debts && data.debts.count > 0) {
+      lines.push('', 'OUTSTANDING DEBTS')
+      lines.push(`  Total Debt Balance: ${fmtDollars(data.debts.totalBalanceCents)}`)
+      lines.push(`  Total Min Payments (monthly): ${fmtDollars(data.debts.totalMinPaymentsCents)}`)
+      lines.push(`  Number of Debts: ${data.debts.count}`)
+    }
+
+    lines.push(
+      '', 'SUMMARY',
+      `  Monthly Income:              ${fmtDollars(data.summary.monthlyIncome)}`,
+      `  Monthly Expenses:           -${fmtDollars(data.summary.monthlyExpenses)}`,
+    )
+    if (data.summary.businessExpenseSavings > 0) {
+      lines.push(`  Business Expense Savings:   +${fmtDollars(data.summary.businessExpenseSavings)}`)
+    }
+    lines.push(
+      `  Monthly Surplus:             ${fmtDollars(data.summary.monthlySurplus)}`,
+      `  Weekly Surplus:              ${fmtDollars(data.summary.weeklySurplus)}`,
+    )
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ato-financial-statement-${new Date().toISOString().slice(0, 10)}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [data])
 
   const fetchReport = useCallback(async (m: number) => {
     setLoading(true)
@@ -78,7 +193,7 @@ export default function ATOReport() {
   const debtCents = parseFloat(debtAmount) * 100 || 0
 
   return (
-    <div className="space-y-6 print:space-y-4">
+    <div ref={reportRef} className="space-y-6 print:space-y-4">
       {/* Controls (hidden in print) */}
       <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-3">
@@ -93,12 +208,26 @@ export default function ATOReport() {
             ))}
           </select>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2 bg-slate-blue text-white rounded hover:bg-slate-blue/80 text-sm font-medium"
-        >
-          Print Report
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={copyReportToClipboard}
+            className="px-4 py-2 bg-charcoal border border-silver-700/30 text-silver-300 rounded hover:bg-silver-700/20 text-sm font-medium transition-colors"
+          >
+            {copied ? 'Copied!' : 'Copy to Clipboard'}
+          </button>
+          <button
+            onClick={downloadReport}
+            className="px-4 py-2 bg-charcoal border border-silver-700/30 text-silver-300 rounded hover:bg-silver-700/20 text-sm font-medium transition-colors"
+          >
+            Download .txt
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 bg-slate-blue text-white rounded hover:bg-slate-blue/80 text-sm font-medium"
+          >
+            Print
+          </button>
+        </div>
       </div>
 
       {/* Report header */}
