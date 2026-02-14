@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       model: budgetModel(),
       system: BUDGET_ASSISTANT_SYSTEM_PROMPT,
       messages,
-      maxSteps: 5,
+      maxSteps: 8,
       tools: budgetAssistantTools,
     })
 

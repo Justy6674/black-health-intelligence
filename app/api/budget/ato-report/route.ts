@@ -85,6 +85,7 @@ export async function GET(req: Request) {
     .select('pattern, merchant_name, category')
     .eq('is_active', true)
 
+  // Exclude internal transfers (Transfer to Spending, Transfer to Tax, etc.)
   const { data: expenses, error: expErr } = await supabase
     .from('up_transactions')
     .select('up_id, description, amount_cents, category_up_id, parent_category_up_id, category_override')
@@ -92,6 +93,8 @@ export async function GET(req: Request) {
     .lt('settled_at', endISO)
     .eq('status', 'SETTLED')
     .lt('amount_cents', 0)
+    .not('description', 'ilike', 'Transfer to%')
+    .not('description', 'ilike', 'Transfer from%')
 
   if (expErr) {
     return NextResponse.json({ error: expErr.message }, { status: 500 })
@@ -163,6 +166,21 @@ export async function GET(req: Request) {
       monthlyAverage: Math.round(totalCents / months),
     }))
 
+  // ── 3. Debt totals ──
+  const { data: activeDebts } = await supabase
+    .from('debts')
+    .select('balance_cents, min_payment_cents, payment_frequency')
+    .eq('is_active', true)
+    .gt('balance_cents', 0)
+
+  const totalDebtBalance = (activeDebts ?? []).reduce((s, d) => s + d.balance_cents, 0)
+  const totalDebtMinPayments = (activeDebts ?? []).reduce((s, d) => {
+    let monthly = d.min_payment_cents
+    if (d.payment_frequency === 'weekly') monthly = Math.round(d.min_payment_cents * (52 / 12))
+    else if (d.payment_frequency === 'fortnightly') monthly = Math.round(d.min_payment_cents * (26 / 12))
+    return s + monthly
+  }, 0)
+
   const monthlySurplus = Math.round(totalMonthlyIncome) - totalMonthlyExpenses
 
   return NextResponse.json({
@@ -192,6 +210,11 @@ export async function GET(req: Request) {
     businessExpenses: {
       totalMonthly: monthlyBusinessSavings,
       categories: businessCategories,
+    },
+    debts: {
+      totalBalanceCents: totalDebtBalance,
+      totalMinPaymentsCents: totalDebtMinPayments,
+      count: (activeDebts ?? []).length,
     },
     summary: {
       monthlyIncome: Math.round(totalMonthlyIncome),

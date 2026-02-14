@@ -98,6 +98,35 @@ export async function POST() {
       if (error) throw new Error(`Transaction upsert failed: ${error.message}`)
     }
 
+    // 5. Auto-categorise uncategorised transactions using category_mapping_rules
+    const { data: mappingRules } = await supabase
+      .from('category_mapping_rules')
+      .select('pattern, category_up_id')
+      .eq('is_active', true)
+
+    if (mappingRules && mappingRules.length > 0) {
+      // Fetch transactions without a category_override
+      const { data: uncategorised } = await supabase
+        .from('up_transactions')
+        .select('up_id, description')
+        .is('category_override', null)
+        .is('category_up_id', null)
+
+      for (const txn of uncategorised ?? []) {
+        const upper = txn.description.toUpperCase()
+        for (const rule of mappingRules) {
+          const parts = rule.pattern.replace(/%/g, '').split(/\s+/)
+          if (parts.every((part: string) => upper.includes(part.toUpperCase()))) {
+            await supabase
+              .from('up_transactions')
+              .update({ category_override: rule.category_up_id })
+              .eq('up_id', txn.up_id)
+            break
+          }
+        }
+      }
+    }
+
     const result: SyncResponse = {
       categories: categoryRows.length,
       accounts: accountRows.length,
