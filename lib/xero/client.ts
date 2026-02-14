@@ -5,6 +5,7 @@ import type { VoidResult, BankDeposit, ClearingTransaction, DepositMatch, XeroIn
 const XERO_TOKEN_URL = 'https://identity.xero.com/connect/token'
 const XERO_API_BASE = 'https://api.xero.com/api.xro/2.0'
 const BATCH_SIZE = 100
+const VOID_BATCH_SIZE = 25 // Xero recommends ~50; smaller batches isolate bad invoices
 const BATCH_DELAY_MS = 1500 // respect Xero rate limits
 
 function env(key: string): string {
@@ -128,6 +129,7 @@ export async function getInvoicesByNumbersWithStatus(
 /**
  * Void a batch of invoices. Uses InvoiceID so Xero can bind the payload correctly.
  * Xero returns ValidationException with zeroed InvoiceID when payload lacks proper identifier.
+ * Uses SummarizeErrors=false so 400 responses include per-invoice Elements.
  */
 async function voidInvoicesBatchWithIds(
   invoices: Array<{ invoiceNumber: string; invoiceId: string }>
@@ -143,7 +145,8 @@ async function voidInvoicesBatchWithIds(
     })),
   }
 
-  const res = await fetch(`${XERO_API_BASE}/Invoices`, {
+  const url = `${XERO_API_BASE}/Invoices?SummarizeErrors=false`
+  const res = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
@@ -151,10 +154,31 @@ async function voidInvoicesBatchWithIds(
 
   if (!res.ok) {
     const text = await res.text()
+    const idToNum = new Map(invoices.map(({ invoiceId, invoiceNumber }) => [invoiceId, invoiceNumber]))
+    let errMsg = `Xero API ${res.status}: ${text.slice(0, 200)}`
+    if (res.status === 400) {
+      try {
+        const err = JSON.parse(text) as {
+          Elements?: Array<{ InvoiceID?: string; InvoiceNumber?: string; ValidationErrors?: Array<{ Message?: string }> }>
+        }
+        const elements = err.Elements ?? []
+        if (elements.length > 0) {
+          const failed = elements
+            .map((e) => (e.InvoiceNumber as string) ?? idToNum.get(e.InvoiceID as string))
+            .filter(Boolean)
+          const unique = [...new Set(failed)]
+          const validationMsg =
+            elements[0]?.ValidationErrors?.map((v) => v.Message).filter(Boolean).join('; ') ?? ''
+          errMsg = `Cannot void invoice(s): ${unique.join(', ')}. ${validationMsg || 'Validation failed.'} Exclude these and retry.`
+        }
+      } catch {
+        // keep generic errMsg
+      }
+    }
     return invoices.map(({ invoiceNumber }) => ({
       invoiceNumber,
       success: false,
-      message: `Xero API ${res.status}: ${text.slice(0, 300)}`,
+      message: errMsg,
     }))
   }
 
@@ -178,13 +202,15 @@ async function voidInvoicesBatchWithIds(
 
 export interface BulkVoidOutcome {
   results: VoidResult[]
-  stoppedEarly: boolean // true if a batch returned 4xx/5xx
+  stoppedEarly: boolean // kept for compatibility; void always completes (false)
 }
+
+const VOID_RETRY_DELAY_MS = 300
 
 /**
  * Chunk invoice numbers and void in batches with rate‑limit pauses.
  * Resolves InvoiceID first (Xero requires it for void payload) then voids.
- * Stops on first 4xx/5xx batch and returns partial results.
+ * When a batch fails (400), retries that chunk one-by-one to isolate real failures and continues.
  */
 export async function bulkVoidInvoices(invoiceNumbers: string[]): Promise<BulkVoidOutcome> {
   const resolved = await getInvoicesByNumbers(invoiceNumbers)
@@ -201,19 +227,23 @@ export async function bulkVoidInvoices(invoiceNumbers: string[]): Promise<BulkVo
   }
 
   const results: VoidResult[] = []
-  for (let i = 0; i < toVoid.length; i += BATCH_SIZE) {
-    const chunk = toVoid.slice(i, i + BATCH_SIZE)
-    const batch = await voidInvoicesBatchWithIds(chunk)
-    const batchFailed =
-      batch.length > 0 &&
-      batch.every(
-        (r) => !r.success && (r.message.startsWith('Xero API 4') || r.message.startsWith('Xero API 5'))
-      )
-    results.push(...batch)
+  for (let i = 0; i < toVoid.length; i += VOID_BATCH_SIZE) {
+    const chunk = toVoid.slice(i, i + VOID_BATCH_SIZE)
+    let batch = await voidInvoicesBatchWithIds(chunk)
+    const batchFailed = batch.length > 0 && batch.every((r) => !r.success)
+
     if (batchFailed) {
-      return { results: [...notFound, ...results], stoppedEarly: true }
+      const retryResults: VoidResult[] = []
+      for (let j = 0; j < chunk.length; j++) {
+        const single = await voidInvoicesBatchWithIds([chunk[j]])
+        retryResults.push(single[0])
+        if (j < chunk.length - 1) await sleep(VOID_RETRY_DELAY_MS)
+      }
+      batch = retryResults
     }
-    if (i + BATCH_SIZE < toVoid.length) {
+
+    results.push(...batch)
+    if (i + VOID_BATCH_SIZE < toVoid.length) {
       await sleep(BATCH_DELAY_MS)
     }
   }
@@ -731,14 +761,6 @@ export async function bulkDeleteInvoices(
   for (let i = 0; i < invoices.length; i++) {
     const result = await deleteOrVoidInvoice(invoices[i])
     results.push(result)
-
-    // Check for API-level failure to stop early
-    if (!result.success && result.message.startsWith('Xero API 4')) {
-      return { results, stoppedEarly: true }
-    }
-    if (!result.success && result.message.startsWith('Xero API 5')) {
-      return { results, stoppedEarly: true }
-    }
 
     // Rate limit: pause every BATCH_SIZE invoices
     if ((i + 1) % BATCH_SIZE === 0 && i + 1 < invoices.length) {

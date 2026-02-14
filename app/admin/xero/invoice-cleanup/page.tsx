@@ -683,7 +683,7 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay PAID</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Processes 20 per run to avoid timeout — click &quot;Continue&quot; if more remain.
+                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Processes 20 per run — click &quot;Continue&quot; until all are done, then run Stage 2 once to bulk void.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -736,7 +736,7 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 2: Void</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Voids AUTHORISED invoices ({toVoid + toUnpayVoid} total from preview). Run Stage 1 first if you have PAID invoices.
+                    Voids all AUTHORISED invoices in one bulk run ({toVoid + toUnpayVoid} total). Run this <strong>only after</strong> you have finished all Stage 1 batches — un-pay everything first (click Continue until done), then void once.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -964,6 +964,9 @@ export default function InvoiceCleanupPage() {
           </div>
           {result.errors.length > 0 && (
             <div className="mt-3">
+              <p className="text-silver-300 text-xs mb-2">
+                Failed invoices require manual handling in Xero (e.g. void, resolve prepayments, then retry).
+              </p>
               {result.errors.some((e) => e.message.includes('429')) && (
                 <p className="text-amber-400 text-xs mb-2">
                   <strong>429</strong> = Xero rate limit. We now use slower requests. Run again to continue.
