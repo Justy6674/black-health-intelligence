@@ -7,6 +7,7 @@ const XERO_API_BASE = 'https://api.xero.com/api.xro/2.0'
 const BATCH_SIZE = 100
 const VOID_BATCH_SIZE = 25 // Xero recommends ~50; smaller batches isolate bad invoices
 const BATCH_DELAY_MS = 1500 // respect Xero rate limits
+const VOID_BATCH_DELAY_MS = 2000 // void-only delay to stay under 60/min
 
 function env(key: string): string {
   const v = process.env[key]
@@ -248,6 +249,41 @@ export async function bulkVoidInvoices(invoiceNumbers: string[]): Promise<BulkVo
     }
   }
   return { results: [...notFound, ...results], stoppedEarly: false }
+}
+
+/**
+ * Void invoices when IDs are already known. Skips the fetch-for-IDs step.
+ * Use when the route has already fetched invoice data (avoids triple fetch / 429).
+ */
+export async function bulkVoidInvoicesWithIds(
+  invoices: Array<{ invoiceNumber: string; invoiceId: string }>
+): Promise<BulkVoidOutcome> {
+  if (invoices.length === 0) {
+    return { results: [], stoppedEarly: false }
+  }
+
+  const results: VoidResult[] = []
+  for (let i = 0; i < invoices.length; i += VOID_BATCH_SIZE) {
+    const chunk = invoices.slice(i, i + VOID_BATCH_SIZE)
+    let batch = await voidInvoicesBatchWithIds(chunk)
+    const batchFailed = batch.length > 0 && batch.every((r) => !r.success)
+
+    if (batchFailed) {
+      const retryResults: VoidResult[] = []
+      for (let j = 0; j < chunk.length; j++) {
+        const single = await voidInvoicesBatchWithIds([chunk[j]])
+        retryResults.push(single[0])
+        if (j < chunk.length - 1) await sleep(VOID_RETRY_DELAY_MS)
+      }
+      batch = retryResults
+    }
+
+    results.push(...batch)
+    if (i + VOID_BATCH_SIZE < invoices.length) {
+      await sleep(VOID_BATCH_DELAY_MS)
+    }
+  }
+  return { results, stoppedEarly: false }
 }
 
 /**

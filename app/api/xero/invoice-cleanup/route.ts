@@ -4,7 +4,7 @@ import {
   getInvoicesByNumbersWithStatus,
   fetchInvoicesBeforeDate,
   bulkDeleteInvoices,
-  bulkVoidInvoices,
+  bulkVoidInvoicesWithIds,
   getInvoiceByNumber,
   deletePayment,
 } from '@/lib/xero/client'
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Un-pay PAID invoices (only when step is unpay or all)
-    const paidWipeVoidNumbers: string[] = []
+    const paidWipeVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     const toUnpayBatched = toPaidWipeItems.slice(0, runStep === 'unpay' || runStep === 'all' ? unpayBatchLimit : undefined)
     const remainingAfterUnpay = toPaidWipeItems.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
     if ((runStep === 'unpay' || runStep === 'all') && toUnpayBatched.length > 0) {
@@ -184,38 +184,32 @@ export async function POST(request: NextRequest) {
           await sleep(500)
         }
         if (ok) {
-          paidWipeVoidNumbers.push(item.invoiceNumber)
+          paidWipeVoidWithIds.push({ invoiceNumber: item.invoiceNumber, invoiceId: inv.invoiceId })
           results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: true })
         }
         await sleep(BATCH_DELAY_MS)
       }
     }
 
-    // Step 2: Void AUTHORISED (and newly un-paid when runStep is all)
-    // When step=void, re-fetch to get current AUTHORISED invoices (including ones we just un-paid if called after unpay)
-    let voidNumbers: string[] = []
+    // Step 2: Void AUTHORISED (use first fetch only — no redundant re-fetch)
+    const toVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     if (runStep === 'void') {
-      let fresh: XeroInvoiceSummary[]
-      if (inputMode === 'fetch' && cutoffDate) {
-        fresh = await fetchInvoicesBeforeDate(cutoffDate)
-      } else {
-        const numsToCheck =
-          Array.isArray(invoiceNumbers) && invoiceNumbers.length > 0
-            ? invoiceNumbers
-            : invoices.map((i) => i.invoiceNumber)
-        fresh = await getInvoicesByNumbersWithStatus(numsToCheck)
-      }
-      const toVoidNow = fresh.filter((inv) => {
+      const toVoidNow = invoices.filter((inv) => {
         const s = normaliseStatus(inv.status)
         return s === 'AUTHORISED' || s.includes('AWAITING')
       })
-      voidNumbers = toVoidNow.map((i) => i.invoiceNumber)
+      toVoidWithIds.push(
+        ...toVoidNow.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId }))
+      )
     } else if (runStep === 'all') {
-      voidNumbers = [...toVoidItems.map((i) => i.invoiceNumber), ...paidWipeVoidNumbers]
+      toVoidWithIds.push(
+        ...toVoidItems.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId })),
+        ...paidWipeVoidWithIds
+      )
     }
 
-    if (voidNumbers.length > 0 && !stoppedEarly) {
-      const { results: voidResults, stoppedEarly: voidStopped } = await bulkVoidInvoices(voidNumbers)
+    if (toVoidWithIds.length > 0 && !stoppedEarly) {
+      const { results: voidResults, stoppedEarly: voidStopped } = await bulkVoidInvoicesWithIds(toVoidWithIds)
       voided = voidResults.filter((r) => r.success).length
       const voidErrors = voidResults.filter((r) => !r.success).map((r) => ({ invoiceNumber: r.invoiceNumber, message: r.message }))
       errors.push(...voidErrors)
