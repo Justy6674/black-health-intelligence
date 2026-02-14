@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
           await sleep(500)
         }
         if (ok) {
-          for (const { creditNoteId, allocationId } of await getCreditNoteAllocationsToInvoice(inv.invoiceId, inv.contactId)) {
+          for (const { creditNoteId, allocationId } of await getCreditNoteAllocationsToInvoice(inv.invoiceId, inv.contactId, inv.appliedCreditNotes)) {
             const r = await deleteCreditNoteAllocation(creditNoteId, allocationId)
             if (!r.success) {
               errors.push({ invoiceNumber: item.invoiceNumber, message: `Credit note: ${r.message}` })
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
           }
         }
         if (ok) {
-          for (const { overpaymentId, allocationId } of await getOverpaymentAllocationsToInvoice(inv.invoiceId, inv.contactId)) {
+          for (const { overpaymentId, allocationId } of await getOverpaymentAllocationsToInvoice(inv.invoiceId, inv.contactId, inv.appliedOverpayments)) {
             const r = await deleteOverpaymentAllocation(overpaymentId, allocationId)
             if (!r.success) {
               errors.push({ invoiceNumber: item.invoiceNumber, message: `Overpayment: ${r.message}` })
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
           }
         }
         if (ok) {
-          for (const { prepaymentId, allocationId } of await getPrepaymentAllocationsToInvoice(inv.invoiceId, inv.contactId)) {
+          for (const { prepaymentId, allocationId } of await getPrepaymentAllocationsToInvoice(inv.invoiceId, inv.contactId, inv.appliedPrepayments)) {
             const r = await deletePrepaymentAllocation(prepaymentId, allocationId)
             if (!r.success) {
               errors.push({ invoiceNumber: item.invoiceNumber, message: `Prepayment: ${r.message}` })

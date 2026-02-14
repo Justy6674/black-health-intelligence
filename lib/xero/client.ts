@@ -406,6 +406,10 @@ export interface InvoiceWithPayments {
   date: string
   contactId?: string
   payments: Array<{ paymentId: string; amount: number; date: string }>
+  /** Credit notes, prepayments, overpayments applied TO this invoice (from Invoice.CreditNotes etc) */
+  appliedCreditNotes?: Array<{ creditNoteId: string; allocationId?: string }>
+  appliedPrepayments?: Array<{ prepaymentId: string; allocationId?: string }>
+  appliedOverpayments?: Array<{ overpaymentId: string; allocationId?: string }>
 }
 
 /**
@@ -426,6 +430,9 @@ export async function getInvoiceById(invoiceId: string): Promise<InvoiceWithPaym
   if (!inv) return null
   const contact = inv.Contact as Record<string, unknown> | undefined
   const payments: Array<Record<string, unknown>> = (inv.Payments as Array<Record<string, unknown>>) ?? []
+  const creditNotes: Array<Record<string, unknown>> = (inv.CreditNotes as Array<Record<string, unknown>>) ?? []
+  const prepayments: Array<Record<string, unknown>> = (inv.Prepayments as Array<Record<string, unknown>>) ?? []
+  const overpayments: Array<Record<string, unknown>> = (inv.Overpayments as Array<Record<string, unknown>>) ?? []
   return {
     invoiceId: inv.InvoiceID as string,
     invoiceNumber: (inv.InvoiceNumber as string) ?? '',
@@ -437,6 +444,18 @@ export async function getInvoiceById(invoiceId: string): Promise<InvoiceWithPaym
       amount: Number(p.Amount ?? 0),
       date: (p.Date as string) ?? '',
     })),
+    appliedCreditNotes: creditNotes.map((cn) => ({
+      creditNoteId: (cn.CreditNoteID ?? cn.CreditNoteId) as string,
+      allocationId: (cn.AllocationID ?? cn.AllocationId) as string | undefined,
+    })).filter((cn) => cn.creditNoteId),
+    appliedPrepayments: prepayments.map((pp) => ({
+      prepaymentId: (pp.PrepaymentID ?? pp.PrepaymentId) as string,
+      allocationId: (pp.AllocationID ?? pp.AllocationId) as string | undefined,
+    })).filter((pp) => pp.prepaymentId),
+    appliedOverpayments: overpayments.map((op) => ({
+      overpaymentId: (op.OverpaymentID ?? op.OverpaymentId) as string,
+      allocationId: (op.AllocationID ?? op.AllocationId) as string | undefined,
+    })).filter((op) => op.overpaymentId),
   }
 }
 
@@ -457,43 +476,88 @@ export async function getInvoiceByNumber(invoiceNumber: string): Promise<Invoice
 }
 
 /**
- * Find credit note allocations that target a given invoice. Needed because void fails with
- * "payments or credit notes allocated" — we must delete both payments AND credit note allocations.
- * If contactId provided, filters to that contact's credit notes (much faster).
+ * Fetch a single credit note by ID (includes Allocations). Use when Invoice.CreditNotes gives ID but not AllocationID.
+ */
+export async function getCreditNoteById(
+  creditNoteId: string
+): Promise<Array<{ allocationId: string; invoiceId: string }>> {
+  const headers = await xeroHeaders()
+  const res = await fetch(`${XERO_API_BASE}/CreditNotes/${creditNoteId}`, { headers })
+  if (!res.ok) return []
+  const data = await res.json()
+  const notes: Array<Record<string, unknown>> = data.CreditNotes ?? []
+  const cn = notes[0]
+  if (!cn) return []
+  const allocations: Array<Record<string, unknown>> = (cn.Allocations as Array<Record<string, unknown>>) ?? []
+  return allocations.map((a) => {
+    const inv = a.Invoice as Record<string, unknown> | undefined
+    return {
+      allocationId: a.AllocationID as string,
+      invoiceId: inv?.InvoiceID as string,
+    }
+  }).filter((a) => a.allocationId)
+}
+
+/**
+ * Find credit note allocations that target a given invoice.
+ * Tries Invoice.CreditNotes first (from getInvoiceById). Falls back to searching CreditNotes list.
+ * List may omit Allocations — then we GET each credit note by ID.
  */
 export async function getCreditNoteAllocationsToInvoice(
   invoiceId: string,
-  contactId?: string
+  contactId?: string,
+  appliedFromInvoice?: Array<{ creditNoteId: string; allocationId?: string }>
 ): Promise<Array<{ creditNoteId: string; allocationId: string }>> {
-  const headers = await xeroHeaders()
   const result: Array<{ creditNoteId: string; allocationId: string }> = []
-  let page = 1
-  let hasMore = true
+  if (appliedFromInvoice?.length) {
+    for (const ap of appliedFromInvoice) {
+      if (ap.allocationId) {
+        result.push({ creditNoteId: ap.creditNoteId, allocationId: ap.allocationId })
+      } else {
+        const allocs = await getCreditNoteById(ap.creditNoteId)
+        for (const a of allocs) {
+          if (a.invoiceId === invoiceId) {
+            result.push({ creditNoteId: ap.creditNoteId, allocationId: a.allocationId })
+          }
+        }
+      }
+    }
+    if (result.length > 0) return result
+  }
+  const headers = await xeroHeaders()
   const where = contactId
     ? `Status=="AUTHORISED" AND Contact.ContactID=guid("${contactId.replace(/"/g, '')}")`
     : `Status=="AUTHORISED"`
   const MAX_PAGES = 5
-  while (hasMore && page <= MAX_PAGES) {
+  for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `${XERO_API_BASE}/CreditNotes?where=${encodeURIComponent(where)}&page=${page}`
     const res = await fetch(url, { headers })
-    if (!res.ok) throw new Error(`Xero CreditNotes ${res.status}: ${await res.text()}`)
+    if (!res.ok) break
     const data = await res.json()
     const notes: Array<Record<string, unknown>> = data.CreditNotes ?? []
     for (const cn of notes) {
       const allocations: Array<Record<string, unknown>> = (cn.Allocations as Array<Record<string, unknown>>) ?? []
-      for (const a of allocations) {
-        const inv = a.Invoice as Record<string, unknown> | undefined
-        if (inv?.InvoiceID === invoiceId) {
-          result.push({
-            creditNoteId: cn.CreditNoteID as string,
-            allocationId: a.AllocationID as string,
-          })
+      if (allocations.length === 0) {
+        const allocs = await getCreditNoteById(cn.CreditNoteID as string)
+        for (const a of allocs) {
+          if (a.invoiceId === invoiceId) {
+            result.push({ creditNoteId: cn.CreditNoteID as string, allocationId: a.allocationId })
+          }
+        }
+      } else {
+        for (const a of allocations) {
+          const inv = a.Invoice as Record<string, unknown> | undefined
+          if (inv?.InvoiceID === invoiceId) {
+            result.push({
+              creditNoteId: cn.CreditNoteID as string,
+              allocationId: a.AllocationID as string,
+            })
+          }
         }
       }
     }
-    hasMore = notes.length === 100
-    page++
-    if (hasMore) await sleep(300)
+    if (notes.length < 100) break
+    await sleep(300)
   }
   return result
 }
@@ -570,23 +634,101 @@ async function deleteAllocation(
   return { success: true, message: 'Allocation removed' }
 }
 
-/** Find overpayment allocations to an invoice. Mirror of credit notes. */
+async function getOverpaymentById(
+  overpaymentId: string
+): Promise<Array<{ allocationId: string; invoiceId: string }>> {
+  const headers = await xeroHeaders()
+  const res = await fetch(`${XERO_API_BASE}/Overpayments/${overpaymentId}`, { headers })
+  if (!res.ok) return []
+  const data = await res.json()
+  const items: Array<Record<string, unknown>> = data.Overpayments ?? []
+  const op = items[0]
+  if (!op) return []
+  const allocations: Array<Record<string, unknown>> = (op.Allocations as Array<Record<string, unknown>>) ?? []
+  return allocations.map((a) => {
+    const inv = a.Invoice as Record<string, unknown> | undefined
+    return {
+      allocationId: a.AllocationID as string,
+      invoiceId: inv?.InvoiceID as string,
+    }
+  }).filter((a) => a.allocationId)
+}
+
+async function getPrepaymentById(
+  prepaymentId: string
+): Promise<Array<{ allocationId: string; invoiceId: string }>> {
+  const headers = await xeroHeaders()
+  const res = await fetch(`${XERO_API_BASE}/Prepayments/${prepaymentId}`, { headers })
+  if (!res.ok) return []
+  const data = await res.json()
+  const items: Array<Record<string, unknown>> = data.Prepayments ?? []
+  const pp = items[0]
+  if (!pp) return []
+  const allocations: Array<Record<string, unknown>> = (pp.Allocations as Array<Record<string, unknown>>) ?? []
+  return allocations.map((a) => {
+    const inv = a.Invoice as Record<string, unknown> | undefined
+    return {
+      allocationId: a.AllocationID as string,
+      invoiceId: inv?.InvoiceID as string,
+    }
+  }).filter((a) => a.allocationId)
+}
+
+/** Find overpayment allocations to an invoice. Uses Invoice.Overpayments first; falls back to list. */
 export async function getOverpaymentAllocationsToInvoice(
   invoiceId: string,
-  contactId?: string
+  contactId?: string,
+  appliedFromInvoice?: Array<{ overpaymentId: string; allocationId?: string }>
 ): Promise<Array<{ overpaymentId: string; allocationId: string }>> {
-  const where = contactId
-    ? `Status=="AUTHORISED" AND Contact.ContactID=guid("${contactId.replace(/"/g, '')}")`
-    : `Status=="AUTHORISED"`
-  const raw = await getAllocationsFromEndpoint('Overpayments', invoiceId, 'OverpaymentID', where)
+  const result: Array<{ overpaymentId: string; allocationId: string }> = []
+  if (appliedFromInvoice?.length) {
+    for (const ap of appliedFromInvoice) {
+      if (ap.allocationId) {
+        result.push({ overpaymentId: ap.overpaymentId, allocationId: ap.allocationId })
+      } else {
+        const allocs = await getOverpaymentById(ap.overpaymentId)
+        for (const a of allocs) {
+          if (a.invoiceId === invoiceId) {
+            result.push({ overpaymentId: ap.overpaymentId, allocationId: a.allocationId })
+          }
+        }
+      }
+    }
+    if (result.length > 0) return result
+  }
+  const raw = await getAllocationsFromEndpoint(
+    'Overpayments',
+    invoiceId,
+    'OverpaymentID',
+    contactId
+      ? `Status=="AUTHORISED" AND Contact.ContactID=guid("${contactId.replace(/"/g, '')}")`
+      : undefined
+  )
   return raw.map((r) => ({ overpaymentId: r.sourceId, allocationId: r.allocationId }))
 }
 
-/** Find prepayment allocations to an invoice. */
+/** Find prepayment allocations to an invoice. Uses Invoice.Prepayments first; falls back to list. */
 export async function getPrepaymentAllocationsToInvoice(
   invoiceId: string,
-  contactId?: string
+  contactId?: string,
+  appliedFromInvoice?: Array<{ prepaymentId: string; allocationId?: string }>
 ): Promise<Array<{ prepaymentId: string; allocationId: string }>> {
+  const result: Array<{ prepaymentId: string; allocationId: string }> = []
+  if (appliedFromInvoice?.length) {
+    for (const ap of appliedFromInvoice) {
+      if (ap.allocationId) {
+        result.push({ prepaymentId: ap.prepaymentId, allocationId: ap.allocationId })
+      } else {
+        const allocs = await getPrepaymentById(ap.prepaymentId)
+        for (const a of allocs) {
+          if (a.invoiceId === invoiceId) {
+            result.push({ prepaymentId: ap.prepaymentId, allocationId: a.allocationId })
+          }
+        }
+      }
+    }
+    if (result.length > 0) return result
+  }
   const where = contactId
     ? `Status=="AUTHORISED" AND Contact.ContactID=guid("${contactId.replace(/"/g, '')}")`
     : `Status=="AUTHORISED"`

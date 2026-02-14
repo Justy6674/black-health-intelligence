@@ -58,10 +58,36 @@ export default async function AdminDashboard() {
                             <p className="text-sm text-silver-400">Manage content for the Solutions/About page</p>
                         </div>
                     </Link>
+                    <Link href="/admin/settings" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-silver-700/30">
+                            <h3 className="font-semibold text-white mb-1">Settings</h3>
+                            <p className="text-sm text-silver-400">Manage notification preferences and email opt-ins</p>
+                        </div>
+                    </Link>
                     <Link href="/" className="block">
                         <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-silver-700/30">
                             <h3 className="font-semibold text-white mb-1">View Public Site</h3>
                             <p className="text-sm text-silver-400">See how your portfolio looks to visitors</p>
+                        </div>
+                    </Link>
+                </div>
+            </div>
+
+            {/* Budget */}
+            <div className="card mt-8">
+                <h2 className="text-xl font-bold text-white mb-2">Budget</h2>
+                <p className="text-sm text-silver-500 mb-4">Personal Up Bank spending &amp; budget tracking</p>
+                <div className="space-y-3">
+                    <Link href="/admin/budget" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-emerald-700/30">
+                            <h3 className="font-semibold text-white mb-1">Budget Overview</h3>
+                            <p className="text-sm text-silver-400">Account balances, monthly spend by category, and budget progress</p>
+                        </div>
+                    </Link>
+                    <Link href="/admin/budget?tab=assistant" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-emerald-700/30">
+                            <h3 className="font-semibold text-white mb-1">Budget AI Assistant</h3>
+                            <p className="text-sm text-silver-400">Ask questions about spending, budgets, and transaction history</p>
                         </div>
                     </Link>
                 </div>

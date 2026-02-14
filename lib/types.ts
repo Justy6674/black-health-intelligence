@@ -87,3 +87,12 @@ export type ProjectSubcategory = Project['subcategory']
 export type MarketScope = Project['market_scope']
 export type DevelopmentPhase = Project['development_phase']
 export type SolutionsSection = SolutionsContent['section']
+
+export interface NotificationPreference {
+    id: string
+    user_id: string
+    email: string
+    clearing_report: boolean
+    created_at: string
+    updated_at: string
+}

@@ -82,6 +82,8 @@ export default function ClearingHelperPage() {
   const [error, setError] = useState('')
   const [confirmModal, setConfirmModal] = useState<DepositMatch | null>(null)
   const [clearingHistory, setClearingHistory] = useState<ClearingAuditEntry[]>([])
+  const [sendingReport, setSendingReport] = useState(false)
+  const [reportResult, setReportResult] = useState<string | null>(null)
 
   useEffect(() => {
     setClearingHistory(loadClearingHistory())
@@ -200,6 +202,30 @@ export default function ClearingHelperPage() {
     setClearingHistory(loadClearingHistory())
     setConfirmModal(null)
     setLoading(false)
+  }
+
+  const sendReport = async () => {
+    if (!summary) return
+    setSendingReport(true)
+    setReportResult(null)
+    setError('')
+    try {
+      const res = await fetch('/api/xero/clearing/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary, toleranceDollars }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Request failed (${res.status})`)
+      }
+      const data = await res.json()
+      setReportResult(data.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send report')
+    } finally {
+      setSendingReport(false)
+    }
   }
 
   return (
@@ -335,7 +361,7 @@ export default function ClearingHelperPage() {
 
           {/* Stats bar */}
           <div className="card mb-6">
-            <div className="flex flex-wrap gap-4 text-sm">
+            <div className="flex flex-wrap items-center gap-4 text-sm">
               <div className="text-silver-400">
                 Deposits: <span className="text-white font-medium">{summary.deposits.length + summary.unmatchedDeposits.length}</span>
               </div>
@@ -355,7 +381,21 @@ export default function ClearingHelperPage() {
                   Tolerance: <span className="text-white font-medium">${(summary.toleranceCents / 100).toFixed(2)}</span>
                 </div>
               )}
+              <div className="ml-auto">
+                <button
+                  onClick={sendReport}
+                  disabled={sendingReport}
+                  className="px-3 py-1.5 text-sm bg-purple-700 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors"
+                >
+                  {sendingReport ? 'Sending...' : 'Email Report'}
+                </button>
+              </div>
             </div>
+            {reportResult && (
+              <div className="mt-3 text-sm text-green-400 bg-green-900/20 border border-green-500/30 rounded p-2">
+                {reportResult}
+              </div>
+            )}
           </div>
 
           {/* Matched deposits */}

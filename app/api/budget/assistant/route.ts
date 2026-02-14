@@ -1,8 +1,8 @@
 import { requireAdmin } from '@/lib/xero/auth'
-import { xeroAssistantTools } from '@/lib/xero/assistant-tools'
-import { XERO_ASSISTANT_SYSTEM_PROMPT } from '@/lib/xero/assistant-knowledge'
+import { budgetAssistantTools } from '@/lib/up/assistant-tools'
+import { BUDGET_ASSISTANT_SYSTEM_PROMPT } from '@/lib/up/assistant-knowledge'
 import { streamText } from 'ai'
-import { xeroModel } from '@/lib/ai/gateway'
+import { budgetModel } from '@/lib/ai/gateway'
 import { NextResponse } from 'next/server'
 
 export const maxDuration = 30
@@ -22,17 +22,17 @@ export async function POST(req: Request) {
     }
 
     const result = streamText({
-      model: xeroModel(),
-      system: XERO_ASSISTANT_SYSTEM_PROMPT,
+      model: budgetModel(),
+      system: BUDGET_ASSISTANT_SYSTEM_PROMPT,
       messages,
       maxSteps: 5,
-      tools: xeroAssistantTools,
+      tools: budgetAssistantTools,
     })
 
     return result.toDataStreamResponse()
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[xero/assistant] error:', message)
+    console.error('[budget/assistant] error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
