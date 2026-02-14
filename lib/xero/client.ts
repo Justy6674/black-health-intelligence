@@ -609,16 +609,16 @@ export async function deletePrepaymentAllocation(
 }
 
 /**
- * Attempt to delete a payment (remove from invoice). Xero may or may not support this.
- * POST /Payments with PaymentID and Status: DELETED.
+ * Delete a payment (remove from invoice). Xero: POST /Payments/{PaymentID} with Status: DELETED.
+ * NOTE: Xero does NOT support deleting payments created via batch payments or receipts via API.
+ * Those must be removed manually in Xero (Remove & Redo on the payment).
  */
 export async function deletePayment(paymentId: string): Promise<{ success: boolean; message: string }> {
   const headers = await xeroHeaders()
-  const body = { PaymentID: paymentId, Status: 'DELETED' }
-  const res = await fetch(`${XERO_API_BASE}/Payments`, {
+  const res = await fetch(`${XERO_API_BASE}/Payments/${paymentId}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({ Status: 'DELETED' }),
   })
   if (!res.ok) {
     const text = await res.text()

@@ -1177,7 +1177,9 @@ export default function InvoiceCleanupPage() {
                 <p>
                   <strong className="text-red-400">{result.errors.length} failed</strong>
                   {result.errors.some((e) => e.message?.includes('payments or credit notes allocated')) ? (
-                    <> — hidden payments. Click <strong>Retry Void</strong> below (no Stage 1 needed — it un-pays first).</>
+                    <>
+                      — allocations block void. Try <strong>Retry Void</strong> first. If it still fails, Xero does not allow removing batch/receipt payments via API — you must remove them manually: open each invoice in Xero → Payments section → <strong>Remove & Redo</strong> on each payment → then void.
+                    </>
                   ) : (
                     <> — see Failed list below. Use Retry or fix in Xero.</>
                   )}
