@@ -30,11 +30,10 @@ function sleep(ms: number) {
 function categorise(inv: XeroInvoiceSummary, includePaid: boolean): InvoiceCleanupAction {
   const s = inv.status.toUpperCase().replace(/\s+/g, ' ')
   if (s === 'DRAFT' || s === 'SUBMITTED') return 'DELETE'
-  // VOIDED/DELETED — skip
   if (s === 'VOIDED' || s === 'DELETED') return 'SKIP'
-  // AUTHORISED / Awaiting Payment — safe to void (we un-pay first in case of hidden allocations)
-  if (s === 'AUTHORISED' || s === 'AUTHORIZED' || s.includes('AWAITING')) return 'UNPAY_VOID'
-  // PAID — only include if user opted in (un-pay then void)
+  // AUTHORISED / Awaiting Payment — open invoices, void directly (API un-pays first if any hidden allocations)
+  if (s === 'AUTHORISED' || s === 'AUTHORIZED' || s.includes('AWAITING')) return 'VOID'
+  // PAID — only include if opted in (must un-pay then void)
   if (s === 'PAID') return includePaid ? 'UNPAY_VOID' : 'SKIP'
   return 'SKIP'
 }
