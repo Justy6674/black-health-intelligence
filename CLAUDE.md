@@ -46,7 +46,7 @@ No test runner is currently configured.
 - `/admin/budget` — Personal budget dashboard (Up Bank integration, categories, limits, business expenses, ATO reporting)
 - `/admin/xero/bulk-void` — Bulk void Xero invoices
 - `/admin/xero/bulk-delete` — Bulk delete Xero invoices
-- `/admin/xero/clearing-helper` — Clearing account reconciliation
+- `/admin/xero/clearing-helper` — Smart clearing account reconciliation (three-way: Halaxy/Xero/NAB matching + batch reconcile)
 - `/admin/xero/invoice-cleanup` — Invoice cleanup (strip allocations before voiding)
 - `/admin/xero/assistant` — AI-powered Xero assistant (streaming)
 
@@ -98,7 +98,8 @@ No test runner is currently configured.
 - **Client**: `lib/xero/client.ts` — batching constants: `BATCH_SIZE=100`, `VOID_BATCH_SIZE=25`, `BATCH_DELAY_MS=1500`, `VOID_BATCH_DELAY_MS=2000`
 - **Bulk Void**: Batches of 100 invoices, 1.5s rate-limit delay between batches, dry-run support
 - **Invoice Cleanup**: Strips all allocations (payments, credit notes, overpayments, prepayments) before voiding
-- **Clearing Helper**: Matches NAB deposits to clearing-account transactions by amount, creates bank transfers
+- **Clearing Helper**: Three-way reconciliation engine (Halaxy payments ↔ Xero clearing ↔ NAB deposits). Two modes: (1) Three-way 1:1:1 invoice-number matching with batch bank transfer creation — default when Halaxy configured. (2) Legacy subset-sum matching as fallback. Fee visibility (Bronze tier 1.90% + $1.00, informational). Statuses: matched, awaiting_deposit, sync_failed, manual_entry, orphan_deposit
+- **Halaxy Client**: `lib/halaxy/client.ts` — OAuth2 token management, FHIR API (invoices, payments), `getBraintreePayments()` filter, invoice enrichment
 - **AI Assistant**: GPT-4o with tool calling (P&L, balance sheet, trial balance, bank summary, invoices, contacts) — streams via Vercel AI SDK
 
 ### Up Bank Integration
