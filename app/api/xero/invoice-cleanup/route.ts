@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   try {
     const body: InvoiceCleanupRequest = await request.json()
     const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit, includePaid } = body
-    const unpayBatchLimit = batchLimit ?? 75
+    const unpayBatchLimit = batchLimit ?? 20
     const includePaidInvoices = includePaid ?? (inputMode === 'fetch')
 
     // ── Verify only: re-fetch from Xero, return current status ──
@@ -159,15 +159,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 1: Un-pay before void. AUTHORISED and PAID can both have hidden payments — list API
-    // doesn't include allocations, so we must fetch each and remove before void.
+    // Step 1: Un-pay PAID only (they have payments). AUTHORISED we void directly — no fetch needed.
     const paidWipeVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     const runUnpay = runStep === 'unpay' || runStep === 'all' || runStep === 'void'
-    const toUnpayAll = runStep === 'void' || runStep === 'all'
-      ? [...toPaidWipeItems, ...toVoidItems]
-      : toPaidWipeItems
-    const toUnpayBatched = toUnpayAll.slice(0, runUnpay ? unpayBatchLimit : undefined)
-    const remainingAfterUnpay = toUnpayAll.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
+    const toUnpayBatched = toPaidWipeItems.slice(0, runUnpay ? unpayBatchLimit : undefined)
+    const remainingAfterUnpay = toPaidWipeItems.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
     if (runUnpay && toUnpayBatched.length > 0) {
       for (const item of toUnpayBatched) {
         if (stoppedEarly) break
@@ -200,10 +196,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 2: Void — only what we un-paid (or had nothing to un-pay). No direct void.
+    // Step 2: Void. AUTHORISED: use IDs from initial fetch, no per-invoice calls. PAID: use un-paid list.
     const toVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     if (runStep === 'void' || runStep === 'all') {
       toVoidWithIds.push(...paidWipeVoidWithIds)
+      toVoidWithIds.push(...toVoidItems.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId })))
     }
 
     if (toVoidWithIds.length > 0 && !stoppedEarly) {

@@ -355,8 +355,8 @@ export default function InvoiceCleanupPage() {
       try {
         const body =
           inputMode === 'fetch' && !retryNumbers?.length
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: 75, includePaid }
-            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: 75, includePaid }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: 20, includePaid }
+            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: 20, includePaid }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -412,7 +412,7 @@ export default function InvoiceCleanupPage() {
     setError('')
     setVerifyResult(null)
     setLastStageRun('void')
-    setLoadingMessage('Un-paying + voiding batch 1…')
+    setLoadingMessage('Voiding batch 1…')
     let remaining = [...nums]
     let batchNum = 0
     let accVoided = 0
@@ -425,13 +425,13 @@ export default function InvoiceCleanupPage() {
         batchNum++
         setLoadingMessage(
           batchNum === 1
-            ? `Un-paying + voiding…`
+            ? `Voiding…`
             : `Batch ${batchNum} — ${remaining.length} remaining…`
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: 75, includePaid }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: 75, includePaid }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: 20, includePaid }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: 20, includePaid }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -504,7 +504,7 @@ export default function InvoiceCleanupPage() {
     setError('')
     setVerifyResult(null)
     setLastStageRun('unpay')
-    setLoadingMessage('Un-paying batch 1…')
+    setLoadingMessage('Stage 1: clearing allocations…')
     let remaining = [...nums]
     let batchNum = 0
     let accPaymentsRemoved = 0
@@ -516,13 +516,13 @@ export default function InvoiceCleanupPage() {
         batchNum++
         setLoadingMessage(
           batchNum === 1
-            ? `Un-paying batch 1…`
+            ? `Stage 1…`
             : `Batch ${batchNum} — ${remaining.length} remaining…`
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 75, includePaid }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 75, includePaid }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 20, includePaid }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 20, includePaid }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -662,7 +662,7 @@ export default function InvoiceCleanupPage() {
             {loadingMessage ?? 'Processing…'}
           </p>
           <p className="mt-1 text-sm text-silver-400">
-            Un-paying and voiding can take several minutes. Do not close this page.
+            Processing can take several minutes. Do not close this page.
           </p>
         </div>
       )}
@@ -982,7 +982,7 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 2: Void</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Un-pays then voids {toVoid + toUnpayVoid} invoice(s). AUTHORISED invoices can have payments/credits allocated — we always un-pay first, then bulk void. Run Stage 1 first for large batches, or run directly (un-pay runs inline).
+                    Voids {toVoid + toUnpayVoid} invoice(s). For AUTHORISED we void directly. PAID need Stage 1 first.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
