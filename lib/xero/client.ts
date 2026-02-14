@@ -77,16 +77,68 @@ function sleep(ms: number) {
 
 // ── Feature 1: Bulk void invoices ──
 
+/** Resolve invoice numbers to IDs. Xero requires InvoiceID for void updates. */
+export async function getInvoicesByNumbers(
+  invoiceNumbers: string[]
+): Promise<Array<{ invoiceNumber: string; invoiceId: string }>> {
+  const full = await getInvoicesByNumbersWithStatus(invoiceNumbers)
+  return full.map(({ invoiceNumber, invoiceId }) => ({ invoiceNumber, invoiceId }))
+}
+
+/** Resolve invoice numbers to full summaries including status (for invoice-cleanup categorisation). */
+export async function getInvoicesByNumbersWithStatus(
+  invoiceNumbers: string[]
+): Promise<XeroInvoiceSummary[]> {
+  if (invoiceNumbers.length === 0) return []
+  const headers = await xeroHeaders()
+  const FETCH_BATCH = 25 // keep where clause URL-safe
+  const result: XeroInvoiceSummary[] = []
+
+  for (let i = 0; i < invoiceNumbers.length; i += FETCH_BATCH) {
+    const chunk = invoiceNumbers.slice(i, i + FETCH_BATCH)
+    const orClauses = chunk.map((n) => {
+      const esc = n.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      return `InvoiceNumber=="${esc}"`
+    })
+    const where = orClauses.join(' OR ')
+    const url = `${XERO_API_BASE}/Invoices?where=${encodeURIComponent(where)}`
+    const res = await fetch(url, { headers })
+    if (!res.ok) throw new Error(`Xero Invoices ${res.status}: ${await res.text()}`)
+    const data = await res.json()
+    const invoices: Array<Record<string, unknown>> = data.Invoices ?? []
+    for (const inv of invoices) {
+      const contact = inv.Contact as Record<string, unknown> | undefined
+      result.push({
+        invoiceId: inv.InvoiceID as string,
+        invoiceNumber: (inv.InvoiceNumber as string) ?? '',
+        date: ((inv.Date as string) ?? '').slice(0, 10),
+        dueDate: ((inv.DueDate as string) ?? '').slice(0, 10),
+        status: (inv.Status as string) ?? '',
+        type: (inv.Type as string) ?? '',
+        contact: (contact?.Name as string) ?? '',
+        total: Number(inv.Total ?? 0),
+        amountDue: Number(inv.AmountDue ?? 0),
+      })
+    }
+    if (i + FETCH_BATCH < invoiceNumbers.length) await sleep(300)
+  }
+  return result
+}
+
 /**
- * Void a batch of invoices (max ~100) in a single PUT request.
- * Returns per‑invoice success/error.
+ * Void a batch of invoices. Uses InvoiceID so Xero can bind the payload correctly.
+ * Xero returns ValidationException with zeroed InvoiceID when payload lacks proper identifier.
  */
-export async function voidInvoicesBatch(invoiceNumbers: string[]): Promise<VoidResult[]> {
+async function voidInvoicesBatchWithIds(
+  invoices: Array<{ invoiceNumber: string; invoiceId: string }>
+): Promise<VoidResult[]> {
+  if (invoices.length === 0) return []
   const headers = await xeroHeaders()
 
   const body = {
-    Invoices: invoiceNumbers.map((n) => ({
-      InvoiceNumber: n,
+    Invoices: invoices.map(({ invoiceNumber, invoiceId }) => ({
+      InvoiceID: invoiceId,
+      InvoiceNumber: invoiceNumber,
       Status: 'VOIDED',
     })),
   }
@@ -99,31 +151,28 @@ export async function voidInvoicesBatch(invoiceNumbers: string[]): Promise<VoidR
 
   if (!res.ok) {
     const text = await res.text()
-    // If the whole request fails, mark every invoice as error
-    return invoiceNumbers.map((n) => ({
-      invoiceNumber: n,
+    return invoices.map(({ invoiceNumber }) => ({
+      invoiceNumber,
       success: false,
-      message: `Xero API ${res.status}: ${text.slice(0, 200)}`,
+      message: `Xero API ${res.status}: ${text.slice(0, 300)}`,
     }))
   }
 
   const data = await res.json()
-  const invoices: Array<Record<string, unknown>> = data.Invoices ?? []
+  const responseInvoices: Array<Record<string, unknown>> = data.Invoices ?? []
 
-  return invoiceNumbers.map((num) => {
-    const inv = invoices.find(
-      (i) => (i.InvoiceNumber as string)?.toUpperCase() === num.toUpperCase()
-    )
+  return invoices.map(({ invoiceNumber, invoiceId }) => {
+    const inv = responseInvoices.find((i) => (i.InvoiceID as string) === invoiceId)
     if (!inv) {
-      return { invoiceNumber: num, success: false, message: 'Not found in response' }
+      return { invoiceNumber, success: false, message: 'Not found in response' }
     }
     if (inv.HasErrors) {
       const msgs = ((inv.ValidationErrors as Array<{ Message: string }>) ?? [])
         .map((e) => e.Message)
         .join('; ')
-      return { invoiceNumber: num, success: false, message: msgs || 'Unknown error' }
+      return { invoiceNumber, success: false, message: msgs || 'Unknown error' }
     }
-    return { invoiceNumber: num, success: true, message: 'Voided' }
+    return { invoiceNumber, success: true, message: 'Voided' }
   })
 }
 
@@ -134,13 +183,27 @@ export interface BulkVoidOutcome {
 
 /**
  * Chunk invoice numbers and void in batches with rate‑limit pauses.
+ * Resolves InvoiceID first (Xero requires it for void payload) then voids.
  * Stops on first 4xx/5xx batch and returns partial results.
  */
 export async function bulkVoidInvoices(invoiceNumbers: string[]): Promise<BulkVoidOutcome> {
+  const resolved = await getInvoicesByNumbers(invoiceNumbers)
+  const foundMap = new Map(resolved.map((r) => [r.invoiceNumber.toUpperCase(), r]))
+  const notFound: VoidResult[] = invoiceNumbers
+    .filter((n) => !foundMap.has(n.toUpperCase()))
+    .map((n) => ({ invoiceNumber: n, success: false, message: 'Invoice not found in Xero' }))
+  const toVoid = invoiceNumbers
+    .filter((n) => foundMap.has(n.toUpperCase()))
+    .map((n) => foundMap.get(n.toUpperCase())!)
+
+  if (toVoid.length === 0) {
+    return { results: notFound, stoppedEarly: false }
+  }
+
   const results: VoidResult[] = []
-  for (let i = 0; i < invoiceNumbers.length; i += BATCH_SIZE) {
-    const chunk = invoiceNumbers.slice(i, i + BATCH_SIZE)
-    const batch = await voidInvoicesBatch(chunk)
+  for (let i = 0; i < toVoid.length; i += BATCH_SIZE) {
+    const chunk = toVoid.slice(i, i + BATCH_SIZE)
+    const batch = await voidInvoicesBatchWithIds(chunk)
     const batchFailed =
       batch.length > 0 &&
       batch.every(
@@ -148,13 +211,13 @@ export async function bulkVoidInvoices(invoiceNumbers: string[]): Promise<BulkVo
       )
     results.push(...batch)
     if (batchFailed) {
-      return { results, stoppedEarly: true }
+      return { results: [...notFound, ...results], stoppedEarly: true }
     }
-    if (i + BATCH_SIZE < invoiceNumbers.length) {
+    if (i + BATCH_SIZE < toVoid.length) {
       await sleep(BATCH_DELAY_MS)
     }
   }
-  return { results, stoppedEarly: false }
+  return { results: [...notFound, ...results], stoppedEarly: false }
 }
 
 /**
@@ -530,7 +593,7 @@ export async function applyClearing(
 /**
  * Fetch all invoices from Xero before a given cutoff date.
  * Paginates through results (Xero returns max 100 per page).
- * Only returns invoices that can be deleted (DRAFT/SUBMITTED) or voided (AUTHORISED/AWAITING PAYMENT).
+ * Returns DRAFT, SUBMITTED, AUTHORISED, and PAID invoices for unified cleanup.
  */
 export async function fetchInvoicesBeforeDate(
   cutoffDate: string
@@ -538,7 +601,7 @@ export async function fetchInvoicesBeforeDate(
   const headers = await xeroHeaders()
   const [year, month, day] = cutoffDate.split('-').map(Number)
   const where = `Date<DateTime(${year},${month},${day})`
-  const statuses = ['DRAFT', 'SUBMITTED', 'AUTHORISED']
+  const statuses = ['DRAFT', 'SUBMITTED', 'AUTHORISED', 'PAID']
 
   const allInvoices: XeroInvoiceSummary[] = []
 

@@ -162,6 +162,45 @@ export interface BulkDeleteAuditEntry {
   dryRun: boolean
 }
 
+// ── Invoice cleanup (unified void + delete) ──
+
+export type InvoiceCleanupInputMode = 'csv' | 'fetch'
+
+export interface InvoiceCleanupRequest {
+  inputMode: InvoiceCleanupInputMode
+  cutoffDate?: string // for fetch mode
+  invoiceNumbers?: string[] // for csv mode
+  dryRun: boolean
+}
+
+export type InvoiceCleanupAction = 'DELETE' | 'VOID' | 'UNPAY_VOID' | 'SKIP'
+
+export interface InvoiceCleanupItem {
+  invoiceNumber: string
+  invoiceId: string
+  date: string
+  total: number
+  status: string
+  action: InvoiceCleanupAction
+}
+
+export interface InvoiceCleanupResponse {
+  inputMode: InvoiceCleanupInputMode
+  cutoffDate?: string
+  invoices: InvoiceCleanupItem[]
+  toDelete: number
+  toVoid: number
+  toUnpayVoid: number
+  skipped: number
+  deleted: number
+  voided: number
+  paymentsRemoved: number
+  errors: { invoiceNumber: string; message: string }[]
+  dryRun: boolean
+  stoppedEarly?: boolean
+  user?: string
+}
+
 // ── Audit log ──
 
 export interface AuditEntry {

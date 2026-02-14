@@ -72,22 +72,16 @@ export default async function AdminDashboard() {
                 <h2 className="text-xl font-bold text-white mb-2">Xero Tools</h2>
                 <p className="text-sm text-silver-500 mb-4">Internal Halaxy → Xero repair &amp; reconciliation</p>
                 <div className="space-y-3">
-                    <Link href="/admin/xero/bulk-void" className="block">
+                    <Link href="/admin/xero/invoice-cleanup" className="block">
                         <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-red-700/30">
-                            <h3 className="font-semibold text-white mb-1">🗑️ Bulk Void Invoices</h3>
-                            <p className="text-sm text-silver-400">Upload a Xero CSV and void incorrect Halaxy invoices in bulk</p>
+                            <h3 className="font-semibold text-white mb-1">🗑️ Invoice Cleanup</h3>
+                            <p className="text-sm text-silver-400">Delete (DRAFT), void (AUTHORISED), or un-pay then void (PAID) in one process. CSV or fetch by cutoff.</p>
                         </div>
                     </Link>
                     <Link href="/admin/xero/clearing-helper" className="block">
                         <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-blue-700/30">
                             <h3 className="font-semibold text-white mb-1">🏦 Clearing Account Reconciliation</h3>
                             <p className="text-sm text-silver-400">Match NAB deposits to Halaxy clearing-account payments for fast bank rec</p>
-                        </div>
-                    </Link>
-                    <Link href="/admin/xero/bulk-delete" className="block">
-                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-amber-700/30">
-                            <h3 className="font-semibold text-white mb-1">📋 Bulk Delete Invoices</h3>
-                            <p className="text-sm text-silver-400">Fetch and bulk delete/void all invoices before a cutoff date directly from Xero</p>
                         </div>
                     </Link>
                     <Link href="/admin/xero/assistant" className="block">
