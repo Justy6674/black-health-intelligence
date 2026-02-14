@@ -157,8 +157,15 @@ export default function InvoiceCleanupPage() {
   const [auditHistory, setAuditHistory] = useState<AuditEntry[]>([])
   const [showConfirmModal, setShowConfirmModal] = useState(false)
 
-  /** Execution mode: all at once vs staged (recommended) */
-  const [executionMode, setExecutionMode] = useState<'all' | 'staged'>('staged')
+  /** Execution mode: one-at-a-time (< 50), staged, or all at once */
+  const [executionMode, setExecutionMode] = useState<'all' | 'staged' | 'one'>('one')
+  const [oneAtATimeQueue, setOneAtATimeQueue] = useState<string[]>([])
+  const [oneAtATimeResult, setOneAtATimeResult] = useState<{
+    invoiceNumber: string
+    success: boolean
+    message: string
+    action: InvoiceCleanupAction
+  } | null>(null)
   const [verifyResult, setVerifyResult] = useState<InvoiceCleanupVerifyResponse | null>(null)
   const [lastStageRun, setLastStageRun] = useState<'unpay' | 'void' | 'delete' | null>(null)
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null)
@@ -201,6 +208,19 @@ export default function InvoiceCleanupPage() {
     setAuditHistory(loadAuditHistory())
   }, [result])
 
+  /** Populate one-at-a-time queue when switching to that mode; fallback to staged if >= 50 */
+  useEffect(() => {
+    if (actionableCount >= 50 && executionMode === 'one') {
+      setExecutionMode('staged')
+    }
+    if (executionMode === 'one' && actionableCount > 0 && actionableCount < 50) {
+      const actionable = invoices.filter(
+        (i) => i.action === 'DELETE' || i.action === 'VOID' || i.action === 'UNPAY_VOID'
+      )
+      setOneAtATimeQueue((q) => (q.length === 0 ? actionable.map((i) => i.invoiceNumber) : q))
+    }
+  }, [executionMode, actionableCount, invoices])
+
   useEffect(() => {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
     const mode = params.get('mode')
@@ -240,6 +260,8 @@ export default function InvoiceCleanupPage() {
     setShowConfirmModal(false)
     setVerifyResult(null)
     setLastStageRun(null)
+    setOneAtATimeQueue([])
+    setOneAtATimeResult(null)
 
     try {
       const body =
@@ -496,7 +518,7 @@ export default function InvoiceCleanupPage() {
       setLoading(false)
       setLoadingMessage(null)
     }
-  }, [inputMode, cutoffDate, invoices])
+  }, [inputMode, cutoffDate, invoices, includePaid])
 
   /** Run Stage 1 (un-pay) with auto-continue: keeps calling API until all batches done. */
   const executeStageUnpayWithAutoContinue = useCallback(async () => {
@@ -619,6 +641,101 @@ export default function InvoiceCleanupPage() {
     },
     []
   )
+
+  /** Process one invoice (one-at-a-time mode). Returns { success, message }. */
+  const processOneInvoice = useCallback(
+    async (invoiceNumber: string, action: 'retry' | 'process'): Promise<{ success: boolean; message: string }> => {
+      const inv = invoices.find((i) => i.invoiceNumber === invoiceNumber)
+      const act = inv?.action ?? 'VOID'
+      const isUnpayVoid = act === 'UNPAY_VOID'
+      const step = act === 'DELETE' ? 'delete' : 'void'
+      const body = {
+        inputMode: 'csv' as const,
+        invoiceNumbers: [invoiceNumber],
+        dryRun: false,
+        step,
+        batchLimit: 1,
+        includePaid,
+        unpayFirstBeforeVoid: isUnpayVoid,
+      }
+      const res = await fetch('/api/xero/invoice-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Request failed (${res.status})`)
+      }
+      const data: InvoiceCleanupResponse = await res.json()
+      const r = data.results?.[0]
+      const err = data.errors?.[0]
+      if (r) {
+        return { success: r.success, message: r.success ? 'Done' : (r.message ?? err?.message ?? 'Unknown error') }
+      }
+      if (err) return { success: false, message: err.message }
+      return { success: data.voided + data.deleted > 0, message: data.voided + data.deleted > 0 ? 'Done' : 'No result' }
+    },
+    [invoices, includePaid]
+  )
+
+  /** One-at-a-time: process current, on success/fail update UI and optionally move on */
+  const handleOneAtATimeProcess = useCallback(async () => {
+    const num = oneAtATimeQueue[0]
+    if (!num || loading) return
+    setLoading(true)
+    setError('')
+    setOneAtATimeResult(null)
+    try {
+      const inv = invoices.find((i) => i.invoiceNumber === num)
+      const act = (inv?.action ?? 'VOID') as InvoiceCleanupAction
+      const { success, message } = await processOneInvoice(num, 'process')
+      setOneAtATimeResult({ invoiceNumber: num, success, message, action: act })
+      if (success) {
+        setOneAtATimeQueue((q) => q.slice(1))
+        setResult((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            voided: (prev.voided ?? 0) + (act !== 'DELETE' ? 1 : 0),
+            deleted: (prev.deleted ?? 0) + (act === 'DELETE' ? 1 : 0),
+            results: [...(prev.results ?? []), { invoiceNumber: num, action: act, success: true }],
+          }
+        })
+      }
+    } catch (err: unknown) {
+      const inv = invoices.find((i) => i.invoiceNumber === num)
+      const act = (inv?.action ?? 'VOID') as InvoiceCleanupAction
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      setOneAtATimeResult({ invoiceNumber: num, success: false, message: msg, action: act })
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }, [oneAtATimeQueue, invoices, loading, processOneInvoice])
+
+  const handleOneAtATimeRetry = useCallback(() => {
+    setError('')
+    handleOneAtATimeProcess()
+  }, [handleOneAtATimeProcess])
+
+  const handleOneAtATimeSkip = useCallback(() => {
+    const num = oneAtATimeQueue[0]
+    if (!num) return
+    setOneAtATimeResult(null)
+    setOneAtATimeQueue((q) => q.slice(1))
+    setError('')
+    setResult((prev) => {
+      if (!prev) return prev
+      const inv = invoices.find((i) => i.invoiceNumber === num)
+      const act = (inv?.action ?? 'VOID') as InvoiceCleanupAction
+      return {
+        ...prev,
+        results: [...(prev.results ?? []), { invoiceNumber: num, action: act, success: false, message: 'Skipped by user' }],
+        errors: [...(prev.errors ?? []), { invoiceNumber: num, message: 'Skipped' }],
+      }
+    })
+  }, [oneAtATimeQueue, invoices])
 
   /** Failed invoice numbers from last result by action */
   const failedByAction = (action: InvoiceCleanupAction): string[] => {
@@ -877,7 +994,23 @@ export default function InvoiceCleanupPage() {
       {invoices.length > 0 && actionableCount > 0 && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">Step 3 — Execute</h2>
-          <div className="flex gap-4 mb-4">
+          <div className="flex gap-4 mb-4 flex-wrap">
+            {actionableCount > 0 && actionableCount < 50 && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="executionMode"
+                  checked={executionMode === 'one'}
+                  onChange={() => {
+                    setExecutionMode('one')
+                    setVerifyResult(null)
+                    setLastStageRun(null)
+                  }}
+                  className="text-slate-blue"
+                />
+                <span className="text-sm text-silver-300 font-medium">One at a time (recommended)</span>
+              </label>
+            )}
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
@@ -890,7 +1023,7 @@ export default function InvoiceCleanupPage() {
                 }}
                 className="text-slate-blue"
               />
-              <span className="text-sm text-silver-300">Staged (recommended)</span>
+              <span className="text-sm text-silver-300">Staged</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -908,7 +1041,83 @@ export default function InvoiceCleanupPage() {
             </label>
           </div>
 
-          {executionMode === 'staged' ? (
+          {executionMode === 'one' ? (
+            <div className="space-y-6">
+              {hasDryRunThisSession && (
+                <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
+                  <p className="text-sm text-amber-200 mb-2">Type this exactly to process invoices:</p>
+                  <code className="block text-xs text-white mb-2 font-mono break-all">
+                    {requiredPhrase}
+                  </code>
+                  <input
+                    type="text"
+                    value={confirmationPhrase}
+                    onChange={(e) => setConfirmationPhrase(e.target.value)}
+                    placeholder="Paste or type the phrase above"
+                    className="w-full px-3 py-2 bg-charcoal border border-silver-600 rounded text-white text-sm font-mono"
+                  />
+                </div>
+              )}
+              <div className="p-4 bg-charcoal/50 rounded border border-slate-blue/40">
+                <h3 className="text-base font-semibold text-white mb-3">One at a time</h3>
+                {oneAtATimeQueue.length === 0 ? (
+                  <p className="text-green-400">
+                    ✓ All {actionableCount} invoices processed.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-silver-400 text-sm mb-3">
+                      {actionableCount - oneAtATimeQueue.length} done · <strong className="text-white">{oneAtATimeQueue.length}</strong> remaining
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3 mb-3">
+                      <span className="font-mono text-white text-lg">{oneAtATimeQueue[0]}</span>
+                      <span className="text-silver-500 text-sm">
+                        ({actionLabel(invoices.find((i) => i.invoiceNumber === oneAtATimeQueue[0])?.action ?? 'SKIP')})
+                      </span>
+                      <span className="text-silver-400">
+                        {formatAmount(invoices.find((i) => i.invoiceNumber === oneAtATimeQueue[0])?.total ?? 0)}
+                      </span>
+                    </div>
+                    {oneAtATimeResult && (
+                      <div className={`mb-3 p-3 rounded text-sm ${oneAtATimeResult.success ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>
+                        {oneAtATimeResult.success ? '✓ Done' : `❌ ${oneAtATimeResult.message}`}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={handleOneAtATimeProcess}
+                        disabled={loading || !hasDryRunThisSession || !phraseMatches}
+                        className="px-4 py-2 bg-blue-700/80 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50 text-sm font-medium"
+                      >
+                        {loading ? 'Processing…' : 'Process this invoice'}
+                      </button>
+                      {oneAtATimeResult && !oneAtATimeResult.success && (
+                        <button
+                          onClick={handleOneAtATimeRetry}
+                          disabled={loading || !phraseMatches}
+                          className="px-4 py-2 bg-amber-700/60 text-white rounded hover:bg-amber-600 transition-colors disabled:opacity-50 text-sm"
+                        >
+                          Retry
+                        </button>
+                      )}
+                      {oneAtATimeQueue.length > 0 && (
+                        <button
+                          onClick={handleOneAtATimeSkip}
+                          disabled={loading}
+                          className="px-4 py-2 bg-silver-700/60 text-silver-200 rounded hover:bg-silver-600 transition-colors disabled:opacity-50 text-sm"
+                        >
+                          Skip (move on)
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-2 text-silver-500 text-xs">
+                      Error? Resolve in Xero (e.g. Remove & Redo payments), then Retry. Or Skip to move on.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : executionMode === 'staged' ? (
             <div className="space-y-6">
               {hasDryRunThisSession && (
                 <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">

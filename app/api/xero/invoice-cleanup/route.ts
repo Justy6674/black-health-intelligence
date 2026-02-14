@@ -68,8 +68,8 @@ export async function POST(request: NextRequest) {
   try {
     const body: InvoiceCleanupRequest = await request.json()
     const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit, includePaid, unpayFirstBeforeVoid } = body
-    // Un-pay clears payments + credit notes + overpayments + prepayments. Cap at 2 to stay under 60s.
-    const unpayBatchLimit = unpayFirstBeforeVoid ? Math.min(batchLimit ?? 2, 2) : (batchLimit ?? 20)
+    // Un-pay clears payments + credit notes + overpayments + prepayments. Use small batches to stay under 60s.
+    const unpayBatchLimit = (step === 'void' || step === 'all' || !step) ? Math.min(batchLimit ?? 5, 5) : (batchLimit ?? 20)
     const includePaidInvoices = includePaid ?? (inputMode === 'fetch')
 
     // ── Verify only: re-fetch from Xero, return current status ──
@@ -166,10 +166,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 1: Un-pay PAID, and AUTHORISED when unpayFirstBeforeVoid (retry after "payments allocated" failure)
+    // Step 1: Always clear allocations before void. AUTHORISED can have credit notes/overpayments that block void.
     const paidWipeVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     const runUnpay = runStep === 'unpay' || runStep === 'all' || runStep === 'void'
-    const toUnpayAll = unpayFirstBeforeVoid ? [...toPaidWipeItems, ...toVoidItems] : toPaidWipeItems
+    const toUnpayAll = runStep === 'void' || runStep === 'all'
+      ? [...toPaidWipeItems, ...toVoidItems]
+      : toPaidWipeItems
     const toUnpayBatched = toUnpayAll.slice(0, runUnpay ? unpayBatchLimit : undefined)
     const remainingAfterUnpay = toUnpayAll.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
     if (runUnpay && toUnpayBatched.length > 0) {
@@ -178,7 +180,7 @@ export async function POST(request: NextRequest) {
         const inv = await getInvoiceById(item.invoiceId)
         if (!inv) {
           errors.push({ invoiceNumber: item.invoiceNumber, message: 'Invoice not found in Xero' })
-          results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: 'Invoice not found in Xero' })
+          results.push({ invoiceNumber: item.invoiceNumber, action: item.action, success: false, message: 'Invoice not found in Xero' })
           stoppedEarly = true
           break
         }
@@ -188,7 +190,7 @@ export async function POST(request: NextRequest) {
           const payResult = await deletePayment(p.paymentId)
           if (!payResult.success) {
             errors.push({ invoiceNumber: item.invoiceNumber, message: `Payment removal failed: ${payResult.message}` })
-            results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: payResult.message })
+            results.push({ invoiceNumber: item.invoiceNumber, action: item.action, success: false, message: payResult.message })
             stoppedEarly = true
             ok = false
             break
@@ -201,7 +203,7 @@ export async function POST(request: NextRequest) {
             const r = await deleteCreditNoteAllocation(creditNoteId, allocationId)
             if (!r.success) {
               errors.push({ invoiceNumber: item.invoiceNumber, message: `Credit note: ${r.message}` })
-              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: r.message })
+              results.push({ invoiceNumber: item.invoiceNumber, action: item.action, success: false, message: r.message })
               stoppedEarly = true
               ok = false
               break
@@ -215,7 +217,7 @@ export async function POST(request: NextRequest) {
             const r = await deleteOverpaymentAllocation(overpaymentId, allocationId)
             if (!r.success) {
               errors.push({ invoiceNumber: item.invoiceNumber, message: `Overpayment: ${r.message}` })
-              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: r.message })
+              results.push({ invoiceNumber: item.invoiceNumber, action: item.action, success: false, message: r.message })
               stoppedEarly = true
               ok = false
               break
@@ -229,7 +231,7 @@ export async function POST(request: NextRequest) {
             const r = await deletePrepaymentAllocation(prepaymentId, allocationId)
             if (!r.success) {
               errors.push({ invoiceNumber: item.invoiceNumber, message: `Prepayment: ${r.message}` })
-              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: r.message })
+              results.push({ invoiceNumber: item.invoiceNumber, action: item.action, success: false, message: r.message })
               stoppedEarly = true
               ok = false
               break
@@ -240,19 +242,16 @@ export async function POST(request: NextRequest) {
         }
         if (ok) {
           paidWipeVoidWithIds.push({ invoiceNumber: item.invoiceNumber, invoiceId: inv.invoiceId })
-          results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: true })
+          results.push({ invoiceNumber: item.invoiceNumber, action: item.action, success: true })
         }
         await sleep(BATCH_DELAY_MS)
       }
     }
 
-    // Step 2: Void. When unpayFirstBeforeVoid: only void what we un-paid. Else: void AUTHORISED directly + un-paid PAID.
+    // Step 2: Void only what we cleared. AUTHORISED with allocations must be cleared first — never skip to direct void.
     const toVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     if (runStep === 'void' || runStep === 'all') {
       toVoidWithIds.push(...paidWipeVoidWithIds)
-      if (!unpayFirstBeforeVoid) {
-        toVoidWithIds.push(...toVoidItems.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId })))
-      }
     }
 
     if (toVoidWithIds.length > 0 && !stoppedEarly) {

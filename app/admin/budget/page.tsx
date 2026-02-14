@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import Link from 'next/link'
@@ -42,9 +42,9 @@ const TAB_CONFIG: { key: Tab; label: string }[] = [
   { key: 'assistant', label: 'AI Assistant' },
 ]
 
-// ── Main page ──
+// ── Inner content (uses useSearchParams, must be in Suspense) ──
 
-export default function BudgetPage() {
+function BudgetPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const activeTab = (searchParams.get('tab') as Tab) || 'overview'
@@ -88,6 +88,14 @@ export default function BudgetPage() {
       {activeTab === 'business-expenses' && <BusinessExpenses />}
       {activeTab === 'assistant' && <BudgetAssistant />}
     </div>
+  )
+}
+
+export default function BudgetPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-silver-400">Loading…</div>}>
+      <BudgetPageContent />
+    </Suspense>
   )
 }
 
