@@ -1,4 +1,5 @@
 import type { NextPageContext } from 'next'
+import Link from 'next/link'
 
 function ErrorPage({ statusCode }: { statusCode?: number }) {
   return (
@@ -10,9 +11,9 @@ function ErrorPage({ statusCode }: { statusCode?: number }) {
         <p style={{ color: '#6b7280', fontSize: '1.125rem', marginTop: '0.5rem' }}>
           {statusCode === 404 ? 'Page not found' : 'An error occurred'}
         </p>
-        <a href="/" style={{ display: 'inline-block', marginTop: '1.5rem', padding: '0.75rem 1.5rem', background: '#334155', color: '#fff', borderRadius: '0.375rem', textDecoration: 'none' }}>
+        <Link href="/" style={{ display: 'inline-block', marginTop: '1.5rem', padding: '0.75rem 1.5rem', background: '#334155', color: '#fff', borderRadius: '0.375rem', textDecoration: 'none' }}>
           Back to Home
-        </a>
+        </Link>
       </div>
     </div>
   )
