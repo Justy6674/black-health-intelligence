@@ -9,6 +9,19 @@ const VOID_BATCH_SIZE = 25 // Xero recommends ~50; smaller batches isolate bad i
 const BATCH_DELAY_MS = 1500 // respect Xero rate limits
 const VOID_BATCH_DELAY_MS = 2000 // void-only delay to stay under 60/min
 
+/** Parse Xero date: ISO string or .NET /Date(ms)/ format */
+function parseXeroDate(val: unknown): string {
+  if (!val || typeof val !== 'string') return ''
+  const s = String(val).trim()
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  const m = s.match(/\/Date\((\d+)\)\//)
+  if (m) {
+    const d = new Date(parseInt(m[1], 10))
+    return d.toISOString().slice(0, 10)
+  }
+  return s.slice(0, 10)
+}
+
 function env(key: string): string {
   const v = process.env[key]
   if (!v) throw new Error(`Missing env var ${key}`)
@@ -113,8 +126,8 @@ export async function getInvoicesByNumbersWithStatus(
       result.push({
         invoiceId: inv.InvoiceID as string,
         invoiceNumber: (inv.InvoiceNumber as string) ?? '',
-        date: ((inv.Date as string) ?? '').slice(0, 10),
-        dueDate: ((inv.DueDate as string) ?? '').slice(0, 10),
+        date: parseXeroDate(inv.Date),
+        dueDate: parseXeroDate(inv.DueDate),
         status: (inv.Status as string) ?? '',
         type: (inv.Type as string) ?? '',
         contact: (contact?.Name as string) ?? '',
@@ -411,7 +424,7 @@ export async function getInvoiceByNumber(invoiceNumber: string): Promise<Invoice
     invoiceId: inv.InvoiceID as string,
     invoiceNumber: (inv.InvoiceNumber as string) ?? '',
     status: (inv.Status as string) ?? '',
-    date: ((inv.Date as string) ?? '').slice(0, 10),
+    date: parseXeroDate(inv.Date),
     payments: payments.map((p) => ({
       paymentId: p.PaymentID as string,
       amount: Number(p.Amount ?? 0),
@@ -833,8 +846,8 @@ export async function fetchInvoicesBeforeDate(
         allInvoices.push({
           invoiceId: inv.InvoiceID as string,
           invoiceNumber: (inv.InvoiceNumber as string) ?? '',
-          date: ((inv.Date as string) ?? '').slice(0, 10),
-          dueDate: ((inv.DueDate as string) ?? '').slice(0, 10),
+          date: parseXeroDate(inv.Date),
+          dueDate: parseXeroDate(inv.DueDate),
           status: inv.Status as string,
           type: inv.Type as string,
           contact: (contact?.Name as string) ?? '',

@@ -30,8 +30,9 @@ function sleep(ms: number) {
 function categorise(inv: XeroInvoiceSummary): InvoiceCleanupAction {
   const s = inv.status.toUpperCase().replace(/\s+/g, ' ')
   if (s === 'DRAFT' || s === 'SUBMITTED') return 'DELETE'
-  if (s === 'AUTHORISED' || s === 'AUTHORIZED' || s.includes('AWAITING')) return 'VOID'
-  if (s === 'PAID') return 'UNPAY_VOID'
+  // AUTHORISED/AWAITING/PAID can all have payments or credit notes allocated.
+  // Xero list API doesn't return that; we must un-pay before void. No direct void path.
+  if (s === 'AUTHORISED' || s === 'AUTHORIZED' || s.includes('AWAITING') || s === 'PAID') return 'UNPAY_VOID'
   return 'SKIP'
 }
 
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
   try {
     const body: InvoiceCleanupRequest = await request.json()
     const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit } = body
-    const unpayBatchLimit = batchLimit ?? 20
+    const unpayBatchLimit = batchLimit ?? 75
 
     // ── Verify only: re-fetch from Xero, return current status ──
     if (verifyOnly && Array.isArray(invoiceNumbers) && invoiceNumbers.length > 0) {
@@ -155,11 +156,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 1: Un-pay PAID invoices (only when step is unpay or all)
+    // Step 1: Un-pay before void. AUTHORISED and PAID can both have hidden payments — list API
+    // doesn't include allocations, so we must fetch each and remove before void.
     const paidWipeVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
-    const toUnpayBatched = toPaidWipeItems.slice(0, runStep === 'unpay' || runStep === 'all' ? unpayBatchLimit : undefined)
-    const remainingAfterUnpay = toPaidWipeItems.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
-    if ((runStep === 'unpay' || runStep === 'all') && toUnpayBatched.length > 0) {
+    const runUnpay = runStep === 'unpay' || runStep === 'all' || runStep === 'void'
+    const toUnpayAll = runStep === 'void' || runStep === 'all'
+      ? [...toPaidWipeItems, ...toVoidItems]
+      : toPaidWipeItems
+    const toUnpayBatched = toUnpayAll.slice(0, runUnpay ? unpayBatchLimit : undefined)
+    const remainingAfterUnpay = toUnpayAll.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
+    if (runUnpay && toUnpayBatched.length > 0) {
       for (const item of toUnpayBatched) {
         if (stoppedEarly) break
         const inv = await getInvoiceByNumber(item.invoiceNumber)
@@ -191,21 +197,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 2: Void AUTHORISED (use first fetch only — no redundant re-fetch)
+    // Step 2: Void — only what we un-paid (or had nothing to un-pay). No direct void.
     const toVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
-    if (runStep === 'void') {
-      const toVoidNow = invoices.filter((inv) => {
-        const s = normaliseStatus(inv.status)
-        return s === 'AUTHORISED' || s.includes('AWAITING')
-      })
-      toVoidWithIds.push(
-        ...toVoidNow.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId }))
-      )
-    } else if (runStep === 'all') {
-      toVoidWithIds.push(
-        ...toVoidItems.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId })),
-        ...paidWipeVoidWithIds
-      )
+    if (runStep === 'void' || runStep === 'all') {
+      toVoidWithIds.push(...paidWipeVoidWithIds)
     }
 
     if (toVoidWithIds.length > 0 && !stoppedEarly) {

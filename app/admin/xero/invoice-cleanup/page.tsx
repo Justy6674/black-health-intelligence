@@ -170,7 +170,22 @@ export default function InvoiceCleanupPage() {
     (i) => i.action === 'DELETE' || i.action === 'VOID' || i.action === 'UNPAY_VOID'
   ).length
   const totalAmount = invoices.reduce((s, i) => s + i.total, 0)
-  const requiredPhrase = `CLEANUP ${actionableCount} INVOICES TOTAL ${formatAmount(totalAmount)}`
+
+  // After partial run/retry, use remaining (failed) count so phrase matches actual work left
+  const failedActionable = result?.results
+    ? result.results.filter(
+        (r) => !r.success && (r.action === 'VOID' || r.action === 'UNPAY_VOID' || r.action === 'DELETE')
+      )
+    : []
+  const remainingCount = failedActionable.length > 0 ? failedActionable.length : actionableCount
+  const remainingTotal =
+    failedActionable.length > 0
+      ? failedActionable.reduce((sum, r) => {
+          const inv = result!.invoices.find((i) => i.invoiceNumber === r.invoiceNumber)
+          return sum + (inv?.total ?? 0)
+        }, 0)
+      : totalAmount
+  const requiredPhrase = `CLEANUP ${remainingCount} INVOICES TOTAL ${formatAmount(remainingTotal)}`
   const phraseMatches =
     confirmationPhrase.trim().toUpperCase() === requiredPhrase.trim().toUpperCase()
 
@@ -337,8 +352,8 @@ export default function InvoiceCleanupPage() {
       try {
         const body =
           inputMode === 'fetch' && !retryNumbers?.length
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 10 : undefined }
-            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 10 : undefined }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: 75 }
+            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: 75 }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -381,6 +396,103 @@ export default function InvoiceCleanupPage() {
     [inputMode, cutoffDate, invoices]
   )
 
+  /** Run Stage 2 (void) with auto-continue: un-pays then voids, loops until all done. */
+  const executeStageVoidWithAutoContinue = useCallback(async (retryNumbers?: string[]) => {
+    const nums = retryNumbers && retryNumbers.length > 0
+      ? retryNumbers
+      : [
+          ...invoices.filter((i) => i.action === 'VOID').map((i) => i.invoiceNumber),
+          ...invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber),
+        ]
+    if (nums.length === 0) return
+    setLoading(true)
+    setError('')
+    setVerifyResult(null)
+    setLastStageRun('void')
+    setLoadingMessage('Un-paying + voiding batch 1…')
+    let remaining = [...nums]
+    let batchNum = 0
+    let accVoided = 0
+    let accPaymentsRemoved = 0
+    const accErrors: Array<{ invoiceNumber: string; message: string }> = []
+    const accResults: InvoiceCleanupResultItem[] = []
+    let lastData: InvoiceCleanupResponse | null = null
+    try {
+      while (remaining.length > 0) {
+        batchNum++
+        setLoadingMessage(
+          batchNum === 1
+            ? `Un-paying + voiding…`
+            : `Batch ${batchNum} — ${remaining.length} remaining…`
+        )
+        const body =
+          inputMode === 'fetch' && batchNum === 1
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: 75 }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: 75 }
+        const res = await fetch('/api/xero/invoice-cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: InvoiceCleanupResponse = await res.json()
+        lastData = data
+        accVoided += data.voided
+        accPaymentsRemoved += data.paymentsRemoved
+        accErrors.push(...data.errors)
+        accResults.push(...(data.results ?? []))
+        setResult({
+          ...data,
+          voided: accVoided,
+          paymentsRemoved: accPaymentsRemoved,
+          errors: accErrors,
+          results: accResults,
+        })
+        if (data.user && batchNum === 1) {
+          saveAuditEntry({
+            timestamp: new Date().toISOString(),
+            user: data.user,
+            inputMode,
+            cutoffDate: data.cutoffDate,
+            total: data.invoices.length,
+            deleted: data.deleted,
+            voided: accVoided,
+            paymentsRemoved: accPaymentsRemoved,
+            failed: accErrors.length,
+          })
+        }
+        if (
+          !data.partial ||
+          !data.remainingInvoiceNumbers ||
+          data.remainingInvoiceNumbers.length === 0 ||
+          data.stoppedEarly
+        ) {
+          break
+        }
+        remaining = data.remainingInvoiceNumbers
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+      if (lastData?.user && batchNum > 1) {
+        setAuditHistory(loadAuditHistory())
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      if (msg.includes('504')) {
+        setError(
+          'Request timed out (60s). Some invoices may have been processed. Click "Load & Preview" to see current state in Xero, then run the stage again for remaining work.'
+        )
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setLoading(false)
+      setLoadingMessage(null)
+    }
+  }, [inputMode, cutoffDate, invoices])
+
   /** Run Stage 1 (un-pay) with auto-continue: keeps calling API until all batches done. */
   const executeStageUnpayWithAutoContinue = useCallback(async () => {
     const nums = invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber)
@@ -406,8 +518,8 @@ export default function InvoiceCleanupPage() {
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 10 }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 10 }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'unpay' as const, batchLimit: 75 }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'unpay' as const, batchLimit: 75 }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -558,7 +670,7 @@ export default function InvoiceCleanupPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Xero Invoice Cleanup</h1>
           <p className="text-silver-400 text-sm">
-            Delete (DRAFT), void (AUTHORISED), or un-pay then void (PAID) in one process
+            DRAFT: delete. AUTHORISED/PAID: void (run Stage 1 first if PAID or void fails with &quot;payments allocated&quot;).
           </p>
         </div>
         <div className="ml-auto">
@@ -792,9 +904,9 @@ export default function InvoiceCleanupPage() {
               {/* Stage 1: Un-pay */}
               {toUnpayVoid > 0 && (
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
-                  <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay PAID</h3>
+                  <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Batches run automatically (10 per call to stay under 60s) — one click processes all, then run Stage 2 once to bulk void.
+                    Removes payments/allocations from {toUnpayVoid} invoice(s). AUTHORISED invoices can have partial payments — we fetch each and un-allocate. Batches run automatically (10 per call) — run Stage 2 after to bulk void.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -847,23 +959,15 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 2: Void</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    {toUnpayVoid > 0 ? (
-                      <>
-                        Voids all AUTHORISED invoices in one bulk run ({toVoid + toUnpayVoid} total). Run this <strong>only after</strong> Stage 1 has finished — un-pay first, then void once.
-                      </>
-                    ) : (
-                      <>
-                        Voids {toVoid} AUTHORISED invoice(s) directly. No un-paying needed — these have no payments.
-                      </>
-                    )}
+                    Un-pays then voids {toVoid + toUnpayVoid} invoice(s). AUTHORISED invoices can have payments/credits allocated — we always un-pay first, then bulk void. Run Stage 1 first for large batches, or run directly (un-pay runs inline).
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => executeStage('void')}
+                      onClick={() => executeStageVoidWithAutoContinue()}
                       disabled={loading || !hasDryRunThisSession || !phraseMatches}
                       className="px-4 py-2 bg-blue-700/80 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50 text-sm font-medium"
                     >
-                      Run Stage 2: Void
+                      Run Stage 2: Void all ({toVoid + toUnpayVoid})
                     </button>
                     {result && lastStageRun === 'void' && (
                       <>
@@ -882,11 +986,20 @@ export default function InvoiceCleanupPage() {
                         </button>
                         {failedVoid.length > 0 && (
                           <button
-                            onClick={() => executeStage('void', failedVoid)}
+                            onClick={() => executeStageVoidWithAutoContinue(failedVoid)}
                             disabled={loading || !phraseMatches}
                             className="px-4 py-2 bg-amber-700/60 text-white rounded hover:bg-amber-600 transition-colors disabled:opacity-50 text-sm"
                           >
-                            Retry Void ({failedVoid.length} failed)
+                            Retry Void all ({failedVoid.length} failed)
+                          </button>
+                        )}
+                        {result.partial && (result.remainingInvoiceNumbers?.length ?? 0) > 0 && lastStageRun === 'void' && (
+                          <button
+                            onClick={() => executeStageVoidWithAutoContinue(result.remainingInvoiceNumbers)}
+                            disabled={loading || !phraseMatches}
+                            className="px-4 py-2 bg-green-700/60 text-white rounded hover:bg-green-600 transition-colors disabled:opacity-50 text-sm font-medium"
+                          >
+                            Continue Void all ({result.remainingInvoiceNumbers!.length} remaining)
                           </button>
                         )}
                       </>
@@ -984,10 +1097,7 @@ export default function InvoiceCleanupPage() {
                 Delete (DRAFT): <strong className="text-amber-400">{toDelete}</strong>
               </p>
               <p>
-                Void (AUTHORISED): <strong className="text-blue-400">{toVoid}</strong>
-              </p>
-              <p>
-                Un-pay + Void (PAID): <strong className="text-red-400">{toUnpayVoid}</strong>
+                Un-pay + Void (AUTHORISED/PAID): <strong className="text-red-400">{toUnpayVoid}</strong>
               </p>
               <p>
                 Total value: <strong className="text-white">{formatAmount(totalAmount)}</strong>
@@ -1024,251 +1134,81 @@ export default function InvoiceCleanupPage() {
 
       {result && !result.dryRun && (
         <div className="card mb-6">
-          <h2 className="text-lg font-semibold text-white mb-3">✅ Result</h2>
-
-          {/* MACRO: Progress overview — answers "where are we at?" */}
-          <div className="mb-6 p-5 bg-charcoal/80 rounded-lg border-2 border-slate-blue/40">
-            <h3 className="text-sm font-semibold text-slate-blue mb-3 uppercase tracking-wide">
-              Progress
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div>
-                <div className="text-silver-500 text-xs">Total in scope</div>
-                <div className="text-2xl font-bold text-white">{result.invoices.length}</div>
-              </div>
-              <div>
-                <div className="text-silver-500 text-xs">This run: voided</div>
-                <div className="text-2xl font-bold text-blue-400">{result.voided}</div>
-              </div>
-              <div>
-                <div className="text-silver-500 text-xs">This run: deleted</div>
-                <div className="text-2xl font-bold text-amber-400">{result.deleted}</div>
-              </div>
-              <div>
-                <div className="text-silver-500 text-xs">This run: un-paid</div>
-                <div className="text-2xl font-bold text-red-400">{result.paymentsRemoved}</div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <span className="text-red-400 font-medium">
-                Failed (manual): {result.errors.length}
-              </span>
-              <span className="text-silver-400">
-                Done this run: {result.voided + result.deleted} voided/deleted
-              </span>
-              <span className="text-silver-400">
-                Skipped: {result.skipped} (no action needed)
-              </span>
-            </div>
-            {inputMode === 'csv' && csvInvoiceNumbers.length > 0 && (
-              <p className="mt-3 text-white font-medium">
-                Of {csvInvoiceNumbers.length} from your CSV: {result.voided + result.deleted} cleaned | {result.errors.length} failed (manual) | {Math.max(0, result.toVoid + result.toUnpayVoid + result.toDelete - result.voided - result.deleted - result.errors.length)} remaining
-              </p>
-            )}
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  verifyInXero(
-                    inputMode === 'csv' ? csvInvoiceNumbers : result.invoices.map((i) => i.invoiceNumber)
-                  )
-                }
-                disabled={loading}
-                className="px-3 py-1.5 text-xs bg-slate-blue/30 text-white rounded hover:bg-slate-blue/50 transition-colors disabled:opacity-50"
-              >
-                Refresh status from Xero
-              </button>
-              <span className="text-silver-500 text-xs">
-                To see remaining work and current state per invoice
-              </span>
-            </div>
-          </div>
-
-          {/* Stage 2: Void breakdown — which voided, which failed */}
-          {lastStageRun === 'void' && result.results && result.results.length > 0 && (() => {
-            const voidedList = result.results
-              .filter((r) => (r.action === 'VOID' || r.action === 'UNPAY_VOID') && r.success)
-              .map((r) => r.invoiceNumber)
-            const failedVoidList = result.results
-              .filter((r) => (r.action === 'VOID' || r.action === 'UNPAY_VOID') && !r.success)
-              .map((r) => r.invoiceNumber)
-            if (voidedList.length === 0 && failedVoidList.length === 0) return null
-            return (
-              <div className="mb-6 p-4 bg-charcoal/60 rounded border border-silver-700/30">
-                <h3 className="text-sm font-semibold text-white mb-3">Stage 2: Void breakdown</h3>
-                <div className="space-y-3">
-                  {voidedList.length > 0 && (
-                    <div>
-                      <span className="text-blue-400 text-sm font-medium">Voided ({voidedList.length})</span>
-                      {' '}
-                      <button
-                        type="button"
-                        onClick={() => void navigator.clipboard.writeText(voidedList.join('\n'))}
-                        className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
-                      >
-                        Copy list
-                      </button>
-                      <p className="text-silver-400 text-xs mt-1 font-mono truncate max-w-full">
-                        {voidedList.slice(0, 5).join(', ')}
-                        {voidedList.length > 5 && ` … and ${voidedList.length - 5} more`}
-                      </p>
-                    </div>
-                  )}
-                  {failedVoidList.length > 0 && (
-                    <div>
-                      <span className="text-red-400 text-sm font-medium">Failed ({failedVoidList.length})</span>
-                      {' '}
-                      <button
-                        type="button"
-                        onClick={() => void navigator.clipboard.writeText(failedVoidList.join('\n'))}
-                        className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
-                      >
-                        Copy list
-                      </button>
-                      <p className="text-silver-400 text-xs mt-1 font-mono truncate max-w-full">
-                        {failedVoidList.slice(0, 5).join(', ')}
-                        {failedVoidList.length > 5 && ` … and ${failedVoidList.length - 5} more`}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })()}
-
-          {result.partial && (result.remainingInvoiceNumbers?.length ?? 0) > 0 && (
-            <div className="mb-4 p-4 bg-blue-900/20 border border-blue-600/30 rounded">
-              <p className="text-blue-200 text-sm font-medium mb-1">
-                Partial run (avoids 504 timeout).
-              </p>
-              <p className="text-silver-300 text-sm mb-1">
-                Processed {result.results?.filter((r) => r.action === 'UNPAY_VOID' && r.success).length ?? 0} invoices this run. <strong>{result.remainingInvoiceNumbers!.length} remaining</strong>.
-              </p>
-              <p className="text-silver-400 text-xs mb-2">
-                Click &quot;Continue Stage 1&quot; above to process the next batch.
-                {result.processedAt && (
-                  <> Last batch: {new Date(result.processedAt).toLocaleTimeString()}</>
-                )}
-              </p>
-              <button
-                type="button"
-                onClick={loadPreview}
-                disabled={loading}
-                className="text-xs text-slate-blue hover:underline disabled:opacity-50"
-              >
-                Refresh preview to see current status in Xero
-              </button>
-            </div>
-          )}
-          {result.stoppedEarly && (
-            <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
-              <p className="text-amber-400 text-sm font-medium mb-1">
-                ⚠️ Stopped early due to API error (e.g. rate limit). Partial results below.
-              </p>
-              <p className="text-silver-300 text-sm mt-2">
-                <strong>What next:</strong> Use &quot;Retry [stage] (N failed)&quot; or run again with the same input.
-              </p>
-            </div>
-          )}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
-            <div>
-              <div className="text-silver-400 text-xs">Deleted</div>
-              <div className="text-xl font-bold text-amber-400">{result.deleted}</div>
-            </div>
-            <div>
-              <div className="text-silver-400 text-xs">Voided</div>
-              <div className="text-xl font-bold text-blue-400">{result.voided}</div>
-            </div>
-            <div>
-              <div className="text-silver-400 text-xs">Payments removed</div>
-              <div className="text-xl font-bold text-red-400">{result.paymentsRemoved}</div>
-            </div>
-            <div>
-              <div className="text-silver-400 text-xs">Skipped</div>
-              <div className="text-xl font-bold text-silver-400">{result.skipped}</div>
-            </div>
-            <div>
-              <div className="text-silver-400 text-xs">Errors</div>
-              <div className="text-xl font-bold text-red-400">{result.errors.length}</div>
-            </div>
-          </div>
-          {result.errors.length > 0 && (
-            <div className="mt-3">
-              <p className="text-silver-300 text-xs mb-2">
-                Failed invoices require manual handling in Xero (e.g. void, resolve prepayments, then retry).
-              </p>
-              {result.errors.some((e) => e.message.includes('429')) && (
-                <p className="text-amber-400 text-xs mb-2">
-                  <strong>429</strong> = Xero rate limit. We now use slower requests. Run again to continue.
+          {/* ONE MACRO SUMMARY — read this first */}
+          <div className="mb-6 p-5 bg-charcoal rounded-lg border-2 border-slate-blue/50">
+            <h2 className="text-lg font-bold text-white mb-4">Result</h2>
+            <div className="space-y-3 text-base">
+              {(result.voided + result.deleted) > 0 && (
+                <p>
+                  <strong className="text-green-400">{result.voided + result.deleted} voided/deleted</strong> — done.
                 </p>
               )}
-              <h3 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-2">
-                Errors:
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = result.errors
-                      .map((e) => `${e.invoiceNumber}: ${e.message}`)
-                      .join('\n')
-                    void navigator.clipboard.writeText(text)
-                  }}
-                  className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
-                >
-                  Copy
-                </button>
-              </h3>
-              <div className="max-h-48 overflow-y-auto text-xs font-mono space-y-1">
+              {result.paymentsRemoved > 0 && result.voided === 0 && (
+                <p>
+                  <strong className="text-amber-400">{result.paymentsRemoved} payments removed</strong>. Run <strong>Stage 2: Void</strong> to finish.
+                </p>
+              )}
+              {result.errors.length > 0 && (
+                <p>
+                  <strong className="text-red-400">{result.errors.length} failed</strong>
+                  {result.errors.some((e) => e.message?.includes('payments or credit notes allocated')) ? (
+                    <> — they have hidden payments. Run <strong>Stage 1</strong> to un-pay them, then <strong>Retry Void</strong>.</>
+                  ) : (
+                    <> — see Failed list below. Use Retry or fix in Xero.</>
+                  )}
+                </p>
+              )}
+              {(result.toUnpayVoid ?? 0) > 0 && result.voided === 0 && result.paymentsRemoved === 0 && result.errors.length === 0 && (
+                <p>
+                  <strong className="text-amber-400">{(result.toUnpayVoid ?? 0)} PAID</strong> — run Stage 1 first.
+                </p>
+              )}
+              {(result.voided + result.deleted + result.paymentsRemoved) === 0 && result.errors.length === 0 && (
+                <p className="text-silver-400">No changes this run.</p>
+              )}
+            </div>
+            {inputMode === 'csv' && csvInvoiceNumbers.length > 0 && (
+              <p className="mt-3 text-silver-400 text-sm">
+                CSV: {result.voided + result.deleted} done · {result.paymentsRemoved} un-paid · {result.errors.length} failed
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => verifyInXero(inputMode === 'csv' ? csvInvoiceNumbers : result.invoices.map((i) => i.invoiceNumber))}
+              disabled={loading}
+              className="mt-3 px-3 py-1.5 text-xs bg-slate-blue/30 text-white rounded hover:bg-slate-blue/50 disabled:opacity-50"
+            >
+              Refresh status from Xero
+            </button>
+          </div>
+
+          {/* Failed list — compact, copyable */}
+          {result.errors.length > 0 && (
+            <div className="mb-4">
+              <p className="text-red-400 font-medium mb-1">Failed ({result.errors.length})</p>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(result!.errors.map((e) => e.invoiceNumber).join('\n'))}
+                className="text-xs text-slate-400 hover:text-white mb-2"
+              >
+                Copy invoice numbers
+              </button>
+              <div className="max-h-32 overflow-y-auto text-xs font-mono text-red-300/90 space-y-0.5">
                 {result.errors.map((e, i) => (
-                  <div key={i} className="text-red-300">
-                    {e.invoiceNumber}: {e.message}
-                  </div>
+                  <div key={i}>{e.invoiceNumber}: {e.message}</div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* What's left: per-invoice results */}
-          {result.results && result.results.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-silver-700/30">
-              <h3 className="text-sm font-medium text-white mb-2">What&apos;s left</h3>
-              <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-silver-400 border-b border-silver-700/30">
-                    <tr>
-                      <th className="py-1.5 pr-4">Invoice #</th>
-                      <th className="py-1.5 pr-4">Planned action</th>
-                      <th className="py-1.5 pr-4">Result</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-silver-200">
-                    {result.results.slice(0, MAX_DISPLAY_ROWS).map((r, i) => (
-                      <tr key={i} className="border-b border-silver-700/10">
-                        <td className="py-1 pr-4 font-mono text-xs">{r.invoiceNumber}</td>
-                        <td className="py-1 pr-4">
-                          <span className={`px-2 py-0.5 rounded text-xs ${actionColor(r.action)}`}>
-                            {actionLabel(r.action)}
-                          </span>
-                        </td>
-                        <td className="py-1 pr-4">
-                          {r.success ? (
-                            <span className="text-green-400">Success</span>
-                          ) : (
-                            <span className="text-red-400">Failed: {r.message ?? 'Unknown'}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {result.results.length > MAX_DISPLAY_ROWS && (
-                  <p className="text-silver-500 text-xs mt-2">
-                    Showing first {MAX_DISPLAY_ROWS} of {result.results.length}
-                  </p>
-                )}
-              </div>
-              <p className="text-silver-400 text-xs mt-2">
-                Failed: {result.results.filter((r) => !r.success).length}. Use &quot;Retry [stage] (N failed)&quot; in the staged flow above.
-              </p>
+          {result.partial && (result.remainingInvoiceNumbers?.length ?? 0) > 0 && (
+            <div className="mb-4 p-3 bg-blue-900/20 border border-blue-600/30 rounded text-sm">
+              <strong>Partial run.</strong> {result.remainingInvoiceNumbers!.length} remaining. Click Continue above.
+            </div>
+          )}
+          {result.stoppedEarly && (
+            <div className="mb-4 p-3 bg-amber-900/20 border border-amber-600/30 rounded text-sm">
+              Stopped early (rate limit?). Run again.
             </div>
           )}
         </div>
