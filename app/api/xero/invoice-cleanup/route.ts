@@ -9,6 +9,10 @@ import {
   deletePayment,
   getCreditNoteAllocationsToInvoice,
   deleteCreditNoteAllocation,
+  getOverpaymentAllocationsToInvoice,
+  deleteOverpaymentAllocation,
+  getPrepaymentAllocationsToInvoice,
+  deletePrepaymentAllocation,
 } from '@/lib/xero/client'
 import type {
   InvoiceCleanupRequest,
@@ -64,8 +68,8 @@ export async function POST(request: NextRequest) {
   try {
     const body: InvoiceCleanupRequest = await request.json()
     const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit, includePaid, unpayFirstBeforeVoid } = body
-    // Un-pay is slow (get + delete payments + credit note unallocate + delays). Cap at 4 to stay under 60s.
-    const unpayBatchLimit = unpayFirstBeforeVoid ? Math.min(batchLimit ?? 4, 4) : (batchLimit ?? 20)
+    // Un-pay clears payments + credit notes + overpayments + prepayments. Cap at 2 to stay under 60s.
+    const unpayBatchLimit = unpayFirstBeforeVoid ? Math.min(batchLimit ?? 2, 2) : (batchLimit ?? 20)
     const includePaidInvoices = includePaid ?? (inputMode === 'fetch')
 
     // ── Verify only: re-fetch from Xero, return current status ──
@@ -193,12 +197,39 @@ export async function POST(request: NextRequest) {
           await sleep(500)
         }
         if (ok) {
-          const cnAllocations = await getCreditNoteAllocationsToInvoice(inv.invoiceId, inv.contactId)
-          for (const { creditNoteId, allocationId } of cnAllocations) {
-            const cnResult = await deleteCreditNoteAllocation(creditNoteId, allocationId)
-            if (!cnResult.success) {
-              errors.push({ invoiceNumber: item.invoiceNumber, message: `Credit note unallocate failed: ${cnResult.message}` })
-              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: cnResult.message })
+          for (const { creditNoteId, allocationId } of await getCreditNoteAllocationsToInvoice(inv.invoiceId, inv.contactId)) {
+            const r = await deleteCreditNoteAllocation(creditNoteId, allocationId)
+            if (!r.success) {
+              errors.push({ invoiceNumber: item.invoiceNumber, message: `Credit note: ${r.message}` })
+              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: r.message })
+              stoppedEarly = true
+              ok = false
+              break
+            }
+            paymentsRemoved++
+            await sleep(500)
+          }
+        }
+        if (ok) {
+          for (const { overpaymentId, allocationId } of await getOverpaymentAllocationsToInvoice(inv.invoiceId, inv.contactId)) {
+            const r = await deleteOverpaymentAllocation(overpaymentId, allocationId)
+            if (!r.success) {
+              errors.push({ invoiceNumber: item.invoiceNumber, message: `Overpayment: ${r.message}` })
+              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: r.message })
+              stoppedEarly = true
+              ok = false
+              break
+            }
+            paymentsRemoved++
+            await sleep(500)
+          }
+        }
+        if (ok) {
+          for (const { prepaymentId, allocationId } of await getPrepaymentAllocationsToInvoice(inv.invoiceId, inv.contactId)) {
+            const r = await deletePrepaymentAllocation(prepaymentId, allocationId)
+            if (!r.success) {
+              errors.push({ invoiceNumber: item.invoiceNumber, message: `Prepayment: ${r.message}` })
+              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: r.message })
               stoppedEarly = true
               ok = false
               break

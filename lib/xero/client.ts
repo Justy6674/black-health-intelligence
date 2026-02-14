@@ -516,6 +516,98 @@ export async function deleteCreditNoteAllocation(
   return { success: true, message: 'Credit note allocation removed' }
 }
 
+async function getAllocationsFromEndpoint(
+  endpoint: string,
+  invoiceId: string,
+  idKey: string,
+  where?: string
+): Promise<Array<{ sourceId: string; allocationId: string }>> {
+  const headers = await xeroHeaders()
+  const result: Array<{ sourceId: string; allocationId: string }> = []
+  let page = 1
+  let hasMore = true
+  const MAX_PAGES = 3
+  while (hasMore && page <= MAX_PAGES) {
+    const qs = where ? `?where=${encodeURIComponent(where)}&page=${page}` : `?page=${page}`
+    const url = `${XERO_API_BASE}/${endpoint}${qs}`
+    const res = await fetch(url, { headers })
+    if (!res.ok) return result
+    const data = await res.json()
+    const key = endpoint
+    const items: Array<Record<string, unknown>> = (data[key] ?? []) as Array<Record<string, unknown>>
+    const list = Array.isArray(items) ? items : []
+    for (const item of list) {
+      const allocations: Array<Record<string, unknown>> = (item.Allocations as Array<Record<string, unknown>>) ?? []
+      for (const a of allocations) {
+        const inv = a.Invoice as Record<string, unknown> | undefined
+        if (inv?.InvoiceID === invoiceId) {
+          result.push({
+            sourceId: item[idKey] as string,
+            allocationId: a.AllocationID as string,
+          })
+        }
+      }
+    }
+    hasMore = list.length === 100
+    page++
+    if (hasMore) await sleep(300)
+  }
+  return result
+}
+
+async function deleteAllocation(
+  endpoint: string,
+  sourceId: string,
+  allocationId: string
+): Promise<{ success: boolean; message: string }> {
+  const headers = await xeroHeaders()
+  const url = `${XERO_API_BASE}/${endpoint}/${sourceId}/Allocations/${allocationId}`
+  const res = await fetch(url, { method: 'DELETE', headers })
+  if (!res.ok) {
+    const text = await res.text()
+    return { success: false, message: `Xero API ${res.status}: ${text.slice(0, 300)}` }
+  }
+  return { success: true, message: 'Allocation removed' }
+}
+
+/** Find overpayment allocations to an invoice. Mirror of credit notes. */
+export async function getOverpaymentAllocationsToInvoice(
+  invoiceId: string,
+  contactId?: string
+): Promise<Array<{ overpaymentId: string; allocationId: string }>> {
+  const where = contactId
+    ? `Status=="AUTHORISED" AND Contact.ContactID=guid("${contactId.replace(/"/g, '')}")`
+    : `Status=="AUTHORISED"`
+  const raw = await getAllocationsFromEndpoint('Overpayments', invoiceId, 'OverpaymentID', where)
+  return raw.map((r) => ({ overpaymentId: r.sourceId, allocationId: r.allocationId }))
+}
+
+/** Find prepayment allocations to an invoice. */
+export async function getPrepaymentAllocationsToInvoice(
+  invoiceId: string,
+  contactId?: string
+): Promise<Array<{ prepaymentId: string; allocationId: string }>> {
+  const where = contactId
+    ? `Status=="AUTHORISED" AND Contact.ContactID=guid("${contactId.replace(/"/g, '')}")`
+    : `Status=="AUTHORISED"`
+  const raw = await getAllocationsFromEndpoint('Prepayments', invoiceId, 'PrepaymentID', where)
+  return raw.map((r) => ({ prepaymentId: r.sourceId, allocationId: r.allocationId }))
+}
+
+export async function deleteOverpaymentAllocation(
+  overpaymentId: string,
+  allocationId: string
+): Promise<{ success: boolean; message: string }> {
+  return deleteAllocation('Overpayments', overpaymentId, allocationId)
+}
+
+export async function deletePrepaymentAllocation(
+  prepaymentId: string,
+  allocationId: string
+): Promise<{ success: boolean; message: string }> {
+  return deleteAllocation('Prepayments', prepaymentId, allocationId)
+}
+
 /**
  * Attempt to delete a payment (remove from invoice). Xero may or may not support this.
  * POST /Payments with PaymentID and Status: DELETED.
