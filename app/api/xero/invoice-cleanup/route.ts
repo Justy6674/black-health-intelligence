@@ -5,7 +5,7 @@ import {
   fetchInvoicesBeforeDate,
   bulkDeleteInvoices,
   bulkVoidInvoicesWithIds,
-  getInvoiceByNumber,
+  getInvoiceById,
   deletePayment,
   getCreditNoteAllocationsToInvoice,
   deleteCreditNoteAllocation,
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     if (runUnpay && toUnpayBatched.length > 0) {
       for (const item of toUnpayBatched) {
         if (stoppedEarly) break
-        const inv = await getInvoiceByNumber(item.invoiceNumber)
+        const inv = await getInvoiceById(item.invoiceId)
         if (!inv) {
           errors.push({ invoiceNumber: item.invoiceNumber, message: 'Invoice not found in Xero' })
           results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: 'Invoice not found in Xero' })

@@ -408,14 +408,18 @@ export interface InvoiceWithPayments {
   payments: Array<{ paymentId: string; amount: number; date: string }>
 }
 
-/** Fetch a single invoice by number, including Payments. Returns null if not found. */
-export async function getInvoiceByNumber(invoiceNumber: string): Promise<InvoiceWithPayments | null> {
+/**
+ * Fetch full invoice by ID. List endpoint omits Payments — must GET by ID for allocations.
+ * Returns null if not found.
+ */
+export async function getInvoiceById(invoiceId: string): Promise<InvoiceWithPayments | null> {
   const headers = await xeroHeaders()
-  const escaped = invoiceNumber.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  const where = `InvoiceNumber=="${escaped}"`
-  const url = `${XERO_API_BASE}/Invoices?where=${encodeURIComponent(where)}`
+  const url = `${XERO_API_BASE}/Invoices/${invoiceId}`
   const res = await fetch(url, { headers })
-  if (!res.ok) throw new Error(`Xero Invoices ${res.status}: ${await res.text()}`)
+  if (!res.ok) {
+    if (res.status === 404) return null
+    throw new Error(`Xero Invoices ${res.status}: ${await res.text()}`)
+  }
   const data = await res.json()
   const invoices: Array<Record<string, unknown>> = data.Invoices ?? []
   const inv = invoices[0]
@@ -434,6 +438,22 @@ export async function getInvoiceByNumber(invoiceNumber: string): Promise<Invoice
       date: (p.Date as string) ?? '',
     })),
   }
+}
+
+/** Fetch a single invoice by number. Resolves ID first then fetches full invoice (with Payments). */
+export async function getInvoiceByNumber(invoiceNumber: string): Promise<InvoiceWithPayments | null> {
+  const escaped = invoiceNumber.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const where = `InvoiceNumber=="${escaped}"`
+  const headers = await xeroHeaders()
+  const listUrl = `${XERO_API_BASE}/Invoices?where=${encodeURIComponent(where)}`
+  const listRes = await fetch(listUrl, { headers })
+  if (!listRes.ok) throw new Error(`Xero Invoices ${listRes.status}: ${await listRes.text()}`)
+  const listData = await listRes.json()
+  const invoices: Array<Record<string, unknown>> = listData.Invoices ?? []
+  const inv = invoices[0]
+  if (!inv) return null
+  const invoiceId = inv.InvoiceID as string
+  return getInvoiceById(invoiceId)
 }
 
 /**
