@@ -12,11 +12,14 @@ import type {
   DepositMatch,
   MatchConfidence,
   ClearingTransaction,
+  ReconciliationGuideResponse,
+  GuideDaySummary,
+  GuidePayment,
 } from '@/lib/xero/types'
 
 // ── Types ──
 
-type ViewMode = 'threeway' | 'legacy'
+type ViewMode = 'threeway' | 'legacy' | 'guide'
 
 const CLEARING_AUDIT_KEY = 'xero_clearing_history'
 
@@ -111,6 +114,10 @@ export default function ClearingHelperPage() {
   const [legacyResults, setLegacyResults] = useState<Map<string, ClearingApplyResponse>>(new Map())
   const [confirmModal, setConfirmModal] = useState<DepositMatch | null>(null)
 
+  // Guide mode state
+  const [guideData, setGuideData] = useState<ReconciliationGuideResponse | null>(null)
+  const [guideMethodFilter, setGuideMethodFilter] = useState<'all' | 'Braintree' | 'medicare' | 'other'>('all')
+
   useEffect(() => {
     setClearingHistory(loadClearingHistory())
   }, [batchResult, legacyResults])
@@ -143,6 +150,7 @@ export default function ClearingHelperPage() {
     setError('')
     setReconciliation(null)
     setLegacySummary(null)
+    setGuideData(null)
     setSelectedMatches(new Set())
     setBatchResult(null)
     setLegacyResults(new Map())
@@ -166,6 +174,15 @@ export default function ClearingHelperPage() {
             .map((m) => m.clearingTxn!.transactionId)
         )
         setSelectedMatches(readyIds)
+      } else if (viewMode === 'guide') {
+        params.set('mode', 'guide')
+        const res = await fetch(`/api/xero/clearing/summary?${params}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: ReconciliationGuideResponse = await res.json()
+        setGuideData(data)
       } else {
         params.set('mode', 'legacy')
         params.set('tolerance', String(Math.round(toleranceDollars * 100)))
@@ -414,6 +431,16 @@ export default function ClearingHelperPage() {
             >
               Legacy (Subset-Sum)
             </button>
+            <button
+              onClick={() => setViewMode('guide')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'guide'
+                  ? 'bg-amber-700/40 text-white'
+                  : 'bg-charcoal text-silver-400 hover:text-white'
+              }`}
+            >
+              Reconciliation Guide
+            </button>
           </div>
 
           {/* Dry run toggle */}
@@ -507,6 +534,15 @@ export default function ClearingHelperPage() {
           dryRun={dryRun}
           feeAccountCode={feeAccountCode}
           onApply={legacyApply}
+        />
+      )}
+
+      {/* ── Guide Mode Results ── */}
+      {viewMode === 'guide' && guideData && (
+        <GuideView
+          data={guideData}
+          methodFilter={guideMethodFilter}
+          onMethodFilterChange={setGuideMethodFilter}
         />
       )}
 
@@ -969,6 +1005,232 @@ function StatusBadge({
     <span className={`inline-block px-1.5 py-0.5 text-[10px] font-medium rounded border ${cls}`}>
       {label}
     </span>
+  )
+}
+
+// ══════════════════════════════════════════
+// Guide View (fee calculator report)
+// ══════════════════════════════════════════
+
+function GuideView({
+  data,
+  methodFilter,
+  onMethodFilterChange,
+}: {
+  data: ReconciliationGuideResponse
+  methodFilter: 'all' | 'Braintree' | 'medicare' | 'other'
+  onMethodFilterChange: (filter: 'all' | 'Braintree' | 'medicare' | 'other') => void
+}) {
+  const { grandTotals, days } = data
+
+  // Filter payments within each day
+  const filteredDays = useMemo(() => {
+    if (methodFilter === 'all') return days
+    return days
+      .map((day) => {
+        const filtered = day.payments.filter((p) => {
+          if (methodFilter === 'Braintree') return p.method === 'Braintree'
+          if (methodFilter === 'medicare') {
+            const m = p.method.toLowerCase()
+            return m.includes('medicare') || m.includes('bulk bill') || m.includes('dva')
+          }
+          // other
+          const m = p.method.toLowerCase()
+          return p.method !== 'Braintree' && !m.includes('medicare') && !m.includes('bulk bill') && !m.includes('dva')
+        })
+        return { ...day, payments: filtered }
+      })
+      .filter((day) => day.payments.length > 0)
+  }, [days, methodFilter])
+
+  return (
+    <>
+      {/* Grand totals cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <SummaryCard
+          label="Total Payments"
+          value={String(data.paymentCount)}
+          sublabel={`$${grandTotals.payments.toFixed(2)}`}
+          colour="text-white"
+        />
+        <SummaryCard
+          label="Braintree (Card)"
+          value={String(grandTotals.braintreeCount)}
+          sublabel={`$${grandTotals.braintreeAmount.toFixed(2)}`}
+          colour="text-indigo-400"
+          onClick={() => onMethodFilterChange('Braintree')}
+        />
+        <SummaryCard
+          label="Medicare / DVA"
+          value={String(grandTotals.medicareCount)}
+          sublabel={`$${grandTotals.medicareAmount.toFixed(2)}`}
+          colour="text-cyan-400"
+          onClick={() => onMethodFilterChange('medicare')}
+        />
+        <SummaryCard
+          label="Est. Fees (Braintree)"
+          value={`$${grandTotals.estimatedFees.toFixed(2)}`}
+          sublabel="Bronze: 1.90% + $1.00"
+          colour="text-amber-400"
+        />
+      </div>
+
+      {/* Filter tabs + print button */}
+      <div className="card mb-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1">
+            {(
+              [
+                { key: 'all', label: 'All', count: data.paymentCount },
+                { key: 'Braintree', label: 'Braintree', count: grandTotals.braintreeCount },
+                { key: 'medicare', label: 'Medicare/DVA', count: grandTotals.medicareCount },
+                { key: 'other', label: 'Other', count: grandTotals.otherCount },
+              ] as Array<{ key: typeof methodFilter; label: string; count: number }>
+            )
+              .filter((t) => t.key === 'all' || t.count > 0)
+              .map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => onMethodFilterChange(tab.key)}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    methodFilter === tab.key
+                      ? 'bg-amber-700/40 text-white'
+                      : 'bg-silver-700/20 text-silver-400 hover:text-white'
+                  }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
+          </div>
+
+          <button
+            onClick={() => window.print()}
+            className="ml-auto px-3 py-1.5 text-xs bg-silver-700/30 text-silver-300 rounded hover:bg-silver-700/50 transition-colors"
+          >
+            Print / Save PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Info banner */}
+      <div className="card mb-6 border-amber-500/30 bg-amber-900/10">
+        <p className="text-sm text-amber-300">
+          This report shows all Halaxy payments for the date range. Use it as a reference when
+          reconciling in Xero via <strong>Find &amp; Match</strong>.
+        </p>
+        <p className="text-xs text-silver-400 mt-1">
+          For pre-separation payments (fee deducted from deposit): in Xero, click Adjustments &rarr;
+          Bank Fee &rarr; enter the fee amount &rarr; account 447 (Merchant Fees).
+        </p>
+      </div>
+
+      {/* Daily payment tables */}
+      {filteredDays.length === 0 ? (
+        <div className="card">
+          <p className="text-silver-400 text-sm">No payments found for the selected filter.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {filteredDays.map((day) => (
+            <GuideDayTable key={day.date} day={day} />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+function GuideDayTable({ day }: { day: GuideDaySummary }) {
+  const braintreePayments = day.payments.filter((p) => p.method === 'Braintree')
+  const medicarePayments = day.payments.filter((p) => {
+    const m = p.method.toLowerCase()
+    return m.includes('medicare') || m.includes('bulk bill') || m.includes('dva')
+  })
+  const otherPayments = day.payments.filter(
+    (p) => !braintreePayments.includes(p) && !medicarePayments.includes(p)
+  )
+
+  return (
+    <div className="card overflow-x-auto">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-white">
+          {new Date(day.date + 'T00:00:00').toLocaleDateString('en-AU', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })}
+        </h3>
+        <span className="text-xs text-silver-400">
+          {day.payments.length} payment{day.payments.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-silver-400 border-b border-silver-700/30 text-xs">
+            <th className="pb-2 pr-3">Invoice</th>
+            <th className="pb-2 pr-3">Patient</th>
+            <th className="pb-2 pr-3 text-right">Amount</th>
+            <th className="pb-2 pr-3">Method</th>
+            <th className="pb-2 pr-3 text-right">Est. Fee</th>
+            <th className="pb-2 text-right">Expected Deposit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {day.payments.map((p) => (
+            <tr key={p.id} className="border-b border-silver-700/10">
+              <td className="py-1.5 pr-3 font-mono text-white text-xs">{p.invoiceNumber || '\u2014'}</td>
+              <td className="py-1.5 pr-3 text-silver-300 text-xs">{p.patientName || '\u2014'}</td>
+              <td className="py-1.5 pr-3 text-right text-white font-mono text-xs">${p.amount.toFixed(2)}</td>
+              <td className="py-1.5 pr-3">
+                <PaymentMethodBadge method={p.method} />
+              </td>
+              <td className="py-1.5 pr-3 text-right font-mono text-xs text-amber-400/70">
+                {p.estimatedFee > 0 ? `$${p.estimatedFee.toFixed(2)}` : '\u2014'}
+              </td>
+              <td className="py-1.5 text-right font-mono text-xs text-emerald-400">
+                ${p.expectedDeposit.toFixed(2)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          {/* Day summary row */}
+          <tr className="border-t border-silver-600/30 text-xs font-medium">
+            <td colSpan={2} className="pt-2 text-silver-400">Day Total</td>
+            <td className="pt-2 text-right text-white font-mono">${day.totals.dayTotal.toFixed(2)}</td>
+            <td></td>
+            <td className="pt-2 text-right text-amber-400 font-mono">${day.totals.braintreeFees.toFixed(2)}</td>
+            <td className="pt-2 text-right text-emerald-400 font-mono">${day.totals.braintreeNet.toFixed(2)}</td>
+          </tr>
+          {/* Breakdown by method */}
+          {braintreePayments.length > 0 && (
+            <tr className="text-[10px] text-silver-500">
+              <td colSpan={2} className="pt-1 pl-4">Braintree ({braintreePayments.length})</td>
+              <td className="pt-1 text-right font-mono">${day.totals.braintree.toFixed(2)}</td>
+              <td></td>
+              <td className="pt-1 text-right font-mono">${day.totals.braintreeFees.toFixed(2)}</td>
+              <td className="pt-1 text-right font-mono">${day.totals.braintreeNet.toFixed(2)}</td>
+            </tr>
+          )}
+          {medicarePayments.length > 0 && (
+            <tr className="text-[10px] text-silver-500">
+              <td colSpan={2} className="pt-1 pl-4">Medicare/DVA ({medicarePayments.length})</td>
+              <td className="pt-1 text-right font-mono">${day.totals.medicare.toFixed(2)}</td>
+              <td colSpan={3}></td>
+            </tr>
+          )}
+          {otherPayments.length > 0 && (
+            <tr className="text-[10px] text-silver-500">
+              <td colSpan={2} className="pt-1 pl-4">Other ({otherPayments.length})</td>
+              <td className="pt-1 text-right font-mono">${day.totals.other.toFixed(2)}</td>
+              <td colSpan={3}></td>
+            </tr>
+          )}
+        </tfoot>
+      </table>
+    </div>
   )
 }
 

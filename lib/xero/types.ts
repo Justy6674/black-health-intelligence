@@ -362,6 +362,52 @@ export interface BatchReconcileResponse {
   dryRun: boolean
 }
 
+// ── Reconciliation Guide types (fee calculator report) ──
+
+export interface GuidePayment {
+  id: string
+  date: string
+  invoiceNumber: string
+  patientName: string
+  amount: number
+  method: string
+  type: string
+  /** Bronze tier estimate: amount × 0.019 + 1.00. Actual fee may differ. */
+  estimatedFee: number
+  /** amount − estimatedFee (for pre-separation Braintree payments) */
+  expectedDeposit: number
+}
+
+export interface GuideDaySummary {
+  date: string
+  payments: GuidePayment[]
+  totals: {
+    braintree: number
+    braintreeFees: number
+    braintreeNet: number
+    medicare: number
+    other: number
+    dayTotal: number
+  }
+}
+
+export interface ReconciliationGuideResponse {
+  fromDate: string
+  toDate: string
+  days: GuideDaySummary[]
+  grandTotals: {
+    payments: number
+    braintreeCount: number
+    braintreeAmount: number
+    medicareCount: number
+    medicareAmount: number
+    otherCount: number
+    otherAmount: number
+    estimatedFees: number
+  }
+  paymentCount: number
+}
+
 // ── Audit log ──
 
 export interface AuditEntry {

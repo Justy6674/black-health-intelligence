@@ -6,7 +6,14 @@ import {
   suggestGroupings,
   reconcileThreeWay,
 } from '@/lib/xero/client'
-import type { ClearingSummaryResponse, ClearingTransaction, ReconciliationResult } from '@/lib/xero/types'
+import type {
+  ClearingSummaryResponse,
+  ClearingTransaction,
+  ReconciliationResult,
+  GuidePayment,
+  GuideDaySummary,
+  ReconciliationGuideResponse,
+} from '@/lib/xero/types'
 import {
   isHalaxyConfigured,
   getPaymentTransactions,
@@ -158,6 +165,105 @@ export async function GET(request: NextRequest) {
         { error: 'XERO_NAB_ACCOUNT_ID and XERO_CLEARING_ACCOUNT_ID env vars are required' },
         { status: 500 }
       )
+    }
+
+    // ── Guide mode: fee calculator report ──
+    if (modeParam === 'guide') {
+      if (!halaxyConfigured) {
+        return NextResponse.json(
+          { error: 'Halaxy credentials not configured — guide mode requires Halaxy' },
+          { status: 400 }
+        )
+      }
+
+      const allPayments = await getPaymentTransactions(fromDate, toDate)
+      const enriched = await enrichPaymentsWithInvoices(
+        allPayments.filter((p) => p.type === 'Payment')
+      )
+
+      // Group by date
+      const byDate = new Map<string, typeof enriched>()
+      for (const p of enriched) {
+        const date = p.created.slice(0, 10)
+        const list = byDate.get(date) ?? []
+        list.push(p)
+        byDate.set(date, list)
+      }
+
+      const bronzeFee = (amount: number) => Math.round((amount * 0.019 + 1.0) * 100) / 100
+
+      const days: GuideDaySummary[] = [...byDate.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, payments]) => {
+          const guidePayments: GuidePayment[] = payments.map((p) => {
+            const isBraintree = p.method === 'Braintree'
+            const fee = isBraintree ? bronzeFee(p.amount) : 0
+            return {
+              id: p.id,
+              date,
+              invoiceNumber: p.invoiceNumber ?? '',
+              patientName: p.patientName ?? '',
+              amount: p.amount,
+              method: p.method,
+              type: p.type,
+              estimatedFee: fee,
+              expectedDeposit: Math.round((p.amount - fee) * 100) / 100,
+            }
+          })
+
+          const braintree = guidePayments.filter((p) => p.method === 'Braintree')
+          const medicare = guidePayments.filter((p) =>
+            p.method.toLowerCase().includes('medicare') ||
+            p.method.toLowerCase().includes('bulk bill') ||
+            p.method.toLowerCase().includes('dva')
+          )
+          const other = guidePayments.filter(
+            (p) => !braintree.includes(p) && !medicare.includes(p)
+          )
+
+          return {
+            date,
+            payments: guidePayments,
+            totals: {
+              braintree: braintree.reduce((s, p) => s + p.amount, 0),
+              braintreeFees: braintree.reduce((s, p) => s + p.estimatedFee, 0),
+              braintreeNet: braintree.reduce((s, p) => s + p.expectedDeposit, 0),
+              medicare: medicare.reduce((s, p) => s + p.amount, 0),
+              other: other.reduce((s, p) => s + p.amount, 0),
+              dayTotal: guidePayments.reduce((s, p) => s + p.amount, 0),
+            },
+          }
+        })
+
+      const allGuide = days.flatMap((d) => d.payments)
+      const braintreeAll = allGuide.filter((p) => p.method === 'Braintree')
+      const medicareAll = allGuide.filter((p) =>
+        p.method.toLowerCase().includes('medicare') ||
+        p.method.toLowerCase().includes('bulk bill') ||
+        p.method.toLowerCase().includes('dva')
+      )
+      const otherAll = allGuide.filter(
+        (p) => !braintreeAll.includes(p) && !medicareAll.includes(p)
+      )
+
+      const resp: ReconciliationGuideResponse = {
+        fromDate,
+        toDate,
+        days,
+        grandTotals: {
+          payments: allGuide.reduce((s, p) => s + p.amount, 0),
+          braintreeCount: braintreeAll.length,
+          braintreeAmount: braintreeAll.reduce((s, p) => s + p.amount, 0),
+          medicareCount: medicareAll.length,
+          medicareAmount: medicareAll.reduce((s, p) => s + p.amount, 0),
+          otherCount: otherAll.length,
+          otherAmount: otherAll.reduce((s, p) => s + p.amount, 0),
+          estimatedFees: braintreeAll.reduce((s, p) => s + p.estimatedFee, 0),
+        },
+        paymentCount: allGuide.length,
+      }
+
+      return NextResponse.json(resp)
     }
 
     // ── Three-way matching mode ──
