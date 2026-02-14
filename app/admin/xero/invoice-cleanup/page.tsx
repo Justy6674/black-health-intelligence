@@ -326,8 +326,8 @@ export default function InvoiceCleanupPage() {
       try {
         const body =
           inputMode === 'fetch' && !retryNumbers?.length
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 50 : undefined }
-            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 50 : undefined }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 20 : undefined }
+            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage, batchLimit: stage === 'unpay' ? 20 : undefined }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -683,7 +683,7 @@ export default function InvoiceCleanupPage() {
                 <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
                   <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay PAID</h3>
                   <p className="text-silver-400 text-sm mb-2">
-                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Processes 50 per run to avoid timeout — click &quot;Continue&quot; if more remain.
+                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED. Processes 20 per run to avoid timeout — click &quot;Continue&quot; if more remain.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button

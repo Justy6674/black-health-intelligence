@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/xero/auth'
-
-/** Max 5 min to avoid 504. Stage 1 un-pay is rate-limited; use batchLimit for large runs. */
-export const maxDuration = 300
 import {
   getInvoicesByNumbersWithStatus,
   fetchInvoicesBeforeDate,
@@ -20,6 +17,9 @@ import type {
   InvoiceCleanupVerifyResponse,
   XeroInvoiceSummary,
 } from '@/lib/xero/types'
+
+/** Hobby: 60s max. Pro: up to 300. Use batchLimit to stay under timeout. */
+export const maxDuration = 60
 
 const BATCH_DELAY_MS = 1500 // Xero rate limit ~60/min; 1.5s between paid-wipe items avoids 429
 
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   try {
     const body: InvoiceCleanupRequest = await request.json()
     const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit } = body
-    const unpayBatchLimit = batchLimit ?? 50
+    const unpayBatchLimit = batchLimit ?? 20
 
     // ── Verify only: re-fetch from Xero, return current status ──
     if (verifyOnly && Array.isArray(invoiceNumbers) && invoiceNumbers.length > 0) {
@@ -170,7 +170,8 @@ export async function POST(request: NextRequest) {
           break
         }
         let ok = true
-        for (const p of inv.payments) {
+        const payments = inv.payments ?? []
+        for (const p of payments) {
           const result = await deletePayment(p.paymentId)
           if (!result.success) {
             errors.push({ invoiceNumber: item.invoiceNumber, message: `Payment removal failed: ${result.message}` })
@@ -267,8 +268,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(resp)
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[invoice-cleanup] error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    const stack = err instanceof Error ? err.stack : undefined
+    console.error('[invoice-cleanup] error:', message, stack)
+    return NextResponse.json(
+      { error: message, ...(process.env.NODE_ENV === 'development' && stack && { stack }) },
+      { status: 500 }
+    )
   }
 }
