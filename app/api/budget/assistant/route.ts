@@ -5,7 +5,7 @@ import { streamText } from 'ai'
 import { budgetModel } from '@/lib/ai/gateway'
 import { NextResponse } from 'next/server'
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   const auth = await requireAdmin()
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       model: budgetModel(),
       system: BUDGET_ASSISTANT_SYSTEM_PROMPT,
       messages,
-      maxSteps: 8,
+      maxSteps: 12,
       tools: budgetAssistantTools,
     })
 
