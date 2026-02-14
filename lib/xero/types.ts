@@ -196,6 +196,8 @@ export interface InvoiceCleanupRequest {
   dryRun: boolean
   /** Include PAID invoices (un-pay then void). If false, PAID → skipped. Default true for fetch, false for CSV. */
   includePaid?: boolean
+  /** When retrying failed void: run un-pay first (for "payments allocated" failures) */
+  unpayFirstBeforeVoid?: boolean
   /** Run only this step; omit or 'all' = current behaviour */
   step?: InvoiceCleanupStep
   /** Re-fetch from Xero and return current status; no mutations */

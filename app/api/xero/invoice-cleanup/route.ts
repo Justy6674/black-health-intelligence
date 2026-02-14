@@ -61,8 +61,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: InvoiceCleanupRequest = await request.json()
-    const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit, includePaid } = body
-    const unpayBatchLimit = batchLimit ?? 20
+    const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit, includePaid, unpayFirstBeforeVoid } = body
+    // Un-pay is slow (get + delete per invoice + delays). Cap at 6 to stay under 60s server timeout.
+    const unpayBatchLimit = unpayFirstBeforeVoid ? Math.min(batchLimit ?? 6, 6) : (batchLimit ?? 20)
     const includePaidInvoices = includePaid ?? (inputMode === 'fetch')
 
     // ── Verify only: re-fetch from Xero, return current status ──
@@ -159,11 +160,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 1: Un-pay PAID only (they have payments). AUTHORISED we void directly — no fetch needed.
+    // Step 1: Un-pay PAID, and AUTHORISED when unpayFirstBeforeVoid (retry after "payments allocated" failure)
     const paidWipeVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     const runUnpay = runStep === 'unpay' || runStep === 'all' || runStep === 'void'
-    const toUnpayBatched = toPaidWipeItems.slice(0, runUnpay ? unpayBatchLimit : undefined)
-    const remainingAfterUnpay = toPaidWipeItems.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
+    const toUnpayAll = unpayFirstBeforeVoid ? [...toPaidWipeItems, ...toVoidItems] : toPaidWipeItems
+    const toUnpayBatched = toUnpayAll.slice(0, runUnpay ? unpayBatchLimit : undefined)
+    const remainingAfterUnpay = toUnpayAll.slice(toUnpayBatched.length).map((i) => i.invoiceNumber)
     if (runUnpay && toUnpayBatched.length > 0) {
       for (const item of toUnpayBatched) {
         if (stoppedEarly) break
@@ -196,11 +198,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 2: Void. AUTHORISED: use IDs from initial fetch, no per-invoice calls. PAID: use un-paid list.
+    // Step 2: Void. When unpayFirstBeforeVoid: only void what we un-paid. Else: void AUTHORISED directly + un-paid PAID.
     const toVoidWithIds: Array<{ invoiceNumber: string; invoiceId: string }> = []
     if (runStep === 'void' || runStep === 'all') {
       toVoidWithIds.push(...paidWipeVoidWithIds)
-      toVoidWithIds.push(...toVoidItems.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId })))
+      if (!unpayFirstBeforeVoid) {
+        toVoidWithIds.push(...toVoidItems.map((i) => ({ invoiceNumber: i.invoiceNumber, invoiceId: i.invoiceId })))
+      }
     }
 
     if (toVoidWithIds.length > 0 && !stoppedEarly) {

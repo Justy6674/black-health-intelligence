@@ -162,6 +162,7 @@ export default function InvoiceCleanupPage() {
   const [verifyResult, setVerifyResult] = useState<InvoiceCleanupVerifyResponse | null>(null)
   const [lastStageRun, setLastStageRun] = useState<'unpay' | 'void' | 'delete' | null>(null)
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null)
+  const [copyFeedback, setCopyFeedback] = useState<'numbers' | 'all' | null>(null)
 
   const [xeroStatus, setXeroStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [xeroOrgName, setXeroOrgName] = useState<string | null>(null)
@@ -399,7 +400,7 @@ export default function InvoiceCleanupPage() {
     [inputMode, cutoffDate, invoices, includePaid]
   )
 
-  /** Run Stage 2 (void) with auto-continue: un-pays then voids, loops until all done. */
+  /** Run Stage 2 (void). Pass retryNumbers for failed "payments allocated" — we un-pay first then void. */
   const executeStageVoidWithAutoContinue = useCallback(async (retryNumbers?: string[]) => {
     const nums = retryNumbers && retryNumbers.length > 0
       ? retryNumbers
@@ -408,11 +409,12 @@ export default function InvoiceCleanupPage() {
           ...invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber),
         ]
     if (nums.length === 0) return
+    const unpayFirst = !!(retryNumbers && retryNumbers.length > 0)
     setLoading(true)
     setError('')
     setVerifyResult(null)
     setLastStageRun('void')
-    setLoadingMessage('Voiding batch 1…')
+    setLoadingMessage(unpayFirst ? 'Clearing allocations then voiding…' : 'Voiding batch 1…')
     let remaining = [...nums]
     let batchNum = 0
     let accVoided = 0
@@ -425,13 +427,13 @@ export default function InvoiceCleanupPage() {
         batchNum++
         setLoadingMessage(
           batchNum === 1
-            ? `Voiding…`
+            ? (unpayFirst ? 'Clearing allocations…' : 'Voiding…')
             : `Batch ${batchNum} — ${remaining.length} remaining…`
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: 20, includePaid }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: 20, includePaid }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: unpayFirst ? 6 : 20, includePaid, unpayFirstBeforeVoid: unpayFirst }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: unpayFirst ? 6 : 20, includePaid, unpayFirstBeforeVoid: unpayFirst }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1175,7 +1177,7 @@ export default function InvoiceCleanupPage() {
                 <p>
                   <strong className="text-red-400">{result.errors.length} failed</strong>
                   {result.errors.some((e) => e.message?.includes('payments or credit notes allocated')) ? (
-                    <> — they have hidden payments. Run <strong>Stage 1</strong> to un-pay them, then <strong>Retry Void</strong>.</>
+                    <> — hidden payments. Click <strong>Retry Void</strong> below (no Stage 1 needed — it un-pays first).</>
                   ) : (
                     <> — see Failed list below. Use Retry or fix in Xero.</>
                   )}
@@ -1207,15 +1209,36 @@ export default function InvoiceCleanupPage() {
 
           {/* Failed list — compact, copyable */}
           {result.errors.length > 0 && (
-            <div className="mb-4">
-              <p className="text-red-400 font-medium mb-1">Failed ({result.errors.length})</p>
-              <button
-                type="button"
-                onClick={() => void navigator.clipboard.writeText(result!.errors.map((e) => e.invoiceNumber).join('\n'))}
-                className="text-xs text-slate-400 hover:text-white mb-2"
-              >
-                Copy invoice numbers
-              </button>
+            <div className="mb-4 p-4 bg-red-900/10 border border-red-500/30 rounded">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                <p className="text-red-400 font-medium">Failed ({result.errors.length})</p>
+                <span className="text-silver-500">|</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(result!.errors.map((e) => e.invoiceNumber).join('\n'))
+                    setCopyFeedback('numbers')
+                    setTimeout(() => setCopyFeedback(null), 1500)
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium bg-slate-blue/40 hover:bg-slate-blue/60 text-white rounded border border-slate-blue/50"
+                >
+                  Copy numbers
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(result!.errors.map((e) => `${e.invoiceNumber}: ${e.message}`).join('\n'))
+                    setCopyFeedback('all')
+                    setTimeout(() => setCopyFeedback(null), 1500)
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium bg-slate-blue/40 hover:bg-slate-blue/60 text-white rounded border border-slate-blue/50"
+                >
+                  Copy all
+                </button>
+                {copyFeedback && (
+                  <span className="text-green-400 text-xs">✓ Copied {copyFeedback}</span>
+                )}
+              </div>
               <div className="max-h-32 overflow-y-auto text-xs font-mono text-red-300/90 space-y-0.5">
                 {result.errors.map((e, i) => (
                   <div key={i}>{e.invoiceNumber}: {e.message}</div>
