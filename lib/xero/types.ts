@@ -43,6 +43,7 @@ export interface PaidWipeResponse {
   total: number
   attempted: number
   voided: number
+  skipped: number
   errors: { invoiceNumber: string; message: string }[]
   paymentsRemoved: Array<{ invoiceNumber: string; paymentIds: string[] }>
   dryRun: boolean
