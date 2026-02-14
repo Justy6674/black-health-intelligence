@@ -300,7 +300,14 @@ export default function InvoiceCleanupPage() {
           setAuditHistory(loadAuditHistory())
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Unknown error')
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        if (msg.includes('504')) {
+          setError(
+            'Request timed out (60s). Some invoices may have been processed. Click "Load & Preview" to see current state in Xero, then run the stage again for remaining work.'
+          )
+        } else {
+          setError(msg)
+        }
       } finally {
         setLoading(false)
       }
@@ -354,7 +361,14 @@ export default function InvoiceCleanupPage() {
           setAuditHistory(loadAuditHistory())
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Unknown error')
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        if (msg.includes('504')) {
+          setError(
+            'Request timed out (60s). Some invoices may have been processed. Click "Load & Preview" to see current state in Xero, then run the stage again for remaining work.'
+          )
+        } else {
+          setError(msg)
+        }
       } finally {
         setLoading(false)
       }
@@ -906,6 +920,117 @@ export default function InvoiceCleanupPage() {
       {result && !result.dryRun && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">✅ Result</h2>
+
+          {/* MACRO: Progress overview — answers "where are we at?" */}
+          <div className="mb-6 p-5 bg-charcoal/80 rounded-lg border-2 border-slate-blue/40">
+            <h3 className="text-sm font-semibold text-slate-blue mb-3 uppercase tracking-wide">
+              Progress
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <div className="text-silver-500 text-xs">Total in scope</div>
+                <div className="text-2xl font-bold text-white">{result.invoices.length}</div>
+              </div>
+              <div>
+                <div className="text-silver-500 text-xs">This run: voided</div>
+                <div className="text-2xl font-bold text-blue-400">{result.voided}</div>
+              </div>
+              <div>
+                <div className="text-silver-500 text-xs">This run: deleted</div>
+                <div className="text-2xl font-bold text-amber-400">{result.deleted}</div>
+              </div>
+              <div>
+                <div className="text-silver-500 text-xs">This run: un-paid</div>
+                <div className="text-2xl font-bold text-red-400">{result.paymentsRemoved}</div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <span className="text-red-400 font-medium">
+                Failed (manual): {result.errors.length}
+              </span>
+              <span className="text-silver-400">
+                Done this run: {result.voided + result.deleted} voided/deleted
+              </span>
+              <span className="text-silver-400">
+                Skipped: {result.skipped} (no action needed)
+              </span>
+            </div>
+            {inputMode === 'csv' && csvInvoiceNumbers.length > 0 && (
+              <p className="mt-3 text-white font-medium">
+                Of {csvInvoiceNumbers.length} from your CSV: {result.voided + result.deleted} cleaned | {result.errors.length} failed (manual) | {Math.max(0, result.toVoid + result.toUnpayVoid + result.toDelete - result.voided - result.deleted - result.errors.length)} remaining
+              </p>
+            )}
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  verifyInXero(
+                    inputMode === 'csv' ? csvInvoiceNumbers : result.invoices.map((i) => i.invoiceNumber)
+                  )
+                }
+                disabled={loading}
+                className="px-3 py-1.5 text-xs bg-slate-blue/30 text-white rounded hover:bg-slate-blue/50 transition-colors disabled:opacity-50"
+              >
+                Refresh status from Xero
+              </button>
+              <span className="text-silver-500 text-xs">
+                To see remaining work and current state per invoice
+              </span>
+            </div>
+          </div>
+
+          {/* Stage 2: Void breakdown — which voided, which failed */}
+          {lastStageRun === 'void' && result.results && result.results.length > 0 && (() => {
+            const voidedList = result.results
+              .filter((r) => (r.action === 'VOID' || r.action === 'UNPAY_VOID') && r.success)
+              .map((r) => r.invoiceNumber)
+            const failedVoidList = result.results
+              .filter((r) => (r.action === 'VOID' || r.action === 'UNPAY_VOID') && !r.success)
+              .map((r) => r.invoiceNumber)
+            if (voidedList.length === 0 && failedVoidList.length === 0) return null
+            return (
+              <div className="mb-6 p-4 bg-charcoal/60 rounded border border-silver-700/30">
+                <h3 className="text-sm font-semibold text-white mb-3">Stage 2: Void breakdown</h3>
+                <div className="space-y-3">
+                  {voidedList.length > 0 && (
+                    <div>
+                      <span className="text-blue-400 text-sm font-medium">Voided ({voidedList.length})</span>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard.writeText(voidedList.join('\n'))}
+                        className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
+                      >
+                        Copy list
+                      </button>
+                      <p className="text-silver-400 text-xs mt-1 font-mono truncate max-w-full">
+                        {voidedList.slice(0, 5).join(', ')}
+                        {voidedList.length > 5 && ` … and ${voidedList.length - 5} more`}
+                      </p>
+                    </div>
+                  )}
+                  {failedVoidList.length > 0 && (
+                    <div>
+                      <span className="text-red-400 text-sm font-medium">Failed ({failedVoidList.length})</span>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard.writeText(failedVoidList.join('\n'))}
+                        className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
+                      >
+                        Copy list
+                      </button>
+                      <p className="text-silver-400 text-xs mt-1 font-mono truncate max-w-full">
+                        {failedVoidList.slice(0, 5).join(', ')}
+                        {failedVoidList.length > 5 && ` … and ${failedVoidList.length - 5} more`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+
           {result.partial && (result.remainingInvoiceNumbers?.length ?? 0) > 0 && (
             <div className="mb-4 p-4 bg-blue-900/20 border border-blue-600/30 rounded">
               <p className="text-blue-200 text-sm font-medium mb-1">
@@ -1044,43 +1169,73 @@ export default function InvoiceCleanupPage() {
         </div>
       )}
 
-      {/* Verify in Xero result */}
-      {verifyResult && verifyResult.verified.length > 0 && (
-        <div className="card mb-6">
-          <h2 className="text-lg font-semibold text-white mb-3">Verified in Xero</h2>
-          <div className="overflow-x-auto max-h-64 overflow-y-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-silver-400 border-b border-silver-700/30">
-                <tr>
-                  <th className="py-2 pr-4">Invoice #</th>
-                  <th className="py-2 pr-4">Status (from Xero)</th>
-                  <th className="py-2 pr-4">Expected</th>
-                  <th className="py-2 pr-4"></th>
-                </tr>
-              </thead>
-              <tbody className="text-silver-200">
-                {verifyResult.verified.map((v, i) => (
-                  <tr key={i} className="border-b border-silver-700/10">
-                    <td className="py-1.5 pr-4 font-mono text-xs">{v.invoiceNumber}</td>
-                    <td className="py-1.5 pr-4">{v.status}</td>
-                    <td className="py-1.5 pr-4">{v.expected ?? '—'}</td>
-                    <td className="py-1.5 pr-4">
-                      {v.ok ? (
-                        <span className="text-green-400">✓</span>
-                      ) : (
-                        <span className="text-red-400" title="Mismatch">✗</span>
-                      )}
-                    </td>
+      {/* Verify in Xero result — Current state grouped by status */}
+      {verifyResult && verifyResult.verified.length > 0 && (() => {
+        const byStatus = new Map<string, string[]>()
+        for (const v of verifyResult.verified) {
+          const status = v.status || 'unknown'
+          const list = byStatus.get(status) ?? []
+          list.push(v.invoiceNumber)
+          byStatus.set(status, list)
+        }
+        const statusOrder = ['VOIDED', 'AUTHORISED', 'AUTHORIZED', 'PAID', 'DRAFT', 'SUBMITTED', 'not found', 'unknown']
+        const statusIdx = (s: string) => {
+          const i = statusOrder.indexOf(s)
+          return i >= 0 ? i : 999
+        }
+        const sorted = [...byStatus.entries()].sort((a, b) => statusIdx(a[0]) - statusIdx(b[0]))
+        return (
+          <div className="card mb-6">
+            <h2 className="text-lg font-semibold text-white mb-3">Current state in Xero (refreshed)</h2>
+            <div className="space-y-3 mb-4">
+              {sorted.map(([status, nums]) => (
+                <div key={status} className="flex flex-wrap items-center gap-2">
+                  <span className="text-silver-300 font-medium min-w-[100px]">{status}:</span>
+                  <span className="text-white">{nums.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(nums.join('\n'))}
+                    className="px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
+                  >
+                    Copy list
+                  </button>
+                  <span className="text-silver-500 text-xs">
+                    {nums.slice(0, 3).join(', ')}{nums.length > 3 ? ` … +${nums.length - 3} more` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto max-h-48 overflow-y-auto border-t border-silver-700/30 pt-3">
+              <table className="w-full text-sm text-left">
+                <thead className="text-silver-400 border-b border-silver-700/30">
+                  <tr>
+                    <th className="py-2 pr-4">Invoice #</th>
+                    <th className="py-2 pr-4">Status (from Xero)</th>
+                    <th className="py-2 pr-4">Expected</th>
+                    <th className="py-2 pr-4"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="text-silver-200">
+                  {verifyResult.verified.map((v, i) => (
+                    <tr key={i} className="border-b border-silver-700/10">
+                      <td className="py-1.5 pr-4 font-mono text-xs">{v.invoiceNumber}</td>
+                      <td className="py-1.5 pr-4">{v.status}</td>
+                      <td className="py-1.5 pr-4">{v.expected ?? '—'}</td>
+                      <td className="py-1.5 pr-4">
+                        {v.ok ? (
+                          <span className="text-green-400">✓</span>
+                        ) : (
+                          <span className="text-red-400" title="Mismatch">✗</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <p className="text-silver-400 text-xs mt-2">
-            {verifyResult.verified.filter((v) => v.ok).length} confirmed, {verifyResult.verified.filter((v) => !v.ok).length} mismatch
-          </p>
-        </div>
-      )}
+        )
+      })()}
 
       {auditHistory.length > 0 && (
         <div className="card">
