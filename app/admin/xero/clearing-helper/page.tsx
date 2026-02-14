@@ -1,25 +1,37 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import type {
+  ReconciliationResult,
+  ThreeWayMatch,
+  ThreeWayMatchStatus,
+  BatchReconcileResponse,
   ClearingSummaryResponse,
   ClearingApplyResponse,
   DepositMatch,
   MatchConfidence,
+  ClearingTransaction,
 } from '@/lib/xero/types'
+
+// ── Types ──
+
+type ViewMode = 'threeway' | 'legacy'
 
 const CLEARING_AUDIT_KEY = 'xero_clearing_history'
 
 interface ClearingAuditEntry {
   timestamp: string
   date: string
-  bankTransactionId: string
+  bankTransactionId?: string
   amount: number
   clearingCount: number
   dryRun: boolean
   success: boolean
   feeAmount?: number
+  batchMode?: boolean
+  batchTotal?: number
+  batchSucceeded?: number
 }
 
 function loadClearingHistory(): ClearingAuditEntry[] {
@@ -62,49 +74,63 @@ function getPresetDates(preset: string): { from: string; to: string } {
       week.setDate(week.getDate() - 6)
       return { from: formatDate(week), to: formatDate(today) }
     }
+    case 'last30': {
+      const month = new Date(today)
+      month.setDate(month.getDate() - 29)
+      return { from: formatDate(month), to: formatDate(today) }
+    }
     default:
       return { from: formatDate(today), to: formatDate(today) }
   }
 }
 
+// ── Main Page ──
+
 export default function ClearingHelperPage() {
   const [fromDate, setFromDate] = useState(() => formatDate(new Date()))
   const [toDate, setToDate] = useState(() => formatDate(new Date()))
+  const [viewMode, setViewMode] = useState<ViewMode>('threeway')
+  const [loading, setLoading] = useState(false)
+  const [dryRun, setDryRun] = useState(true)
+  const [error, setError] = useState('')
+  const [clearingHistory, setClearingHistory] = useState<ClearingAuditEntry[]>([])
+
+  // Three-way mode state
+  const [reconciliation, setReconciliation] = useState<ReconciliationResult | null>(null)
+  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(new Set())
+  const [batchResult, setBatchResult] = useState<BatchReconcileResponse | null>(null)
+  const [statusFilter, setStatusFilter] = useState<ThreeWayMatchStatus | 'all'>('all')
+  const [reconciling, setReconciling] = useState(false)
+
+  // Legacy mode state
+  const [legacySummary, setLegacySummary] = useState<ClearingSummaryResponse | null>(null)
   const [toleranceDollars, setToleranceDollars] = useState(5)
   const [feeAccountCode, setFeeAccountCode] = useState(
     () => process.env.NEXT_PUBLIC_XERO_FEE_ACCOUNT_CODE ?? ''
   )
-  const [hxFilterOnly, setHxFilterOnly] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [summary, setSummary] = useState<ClearingSummaryResponse | null>(null)
-  const [dryRun, setDryRun] = useState(true)
-  const [results, setResults] = useState<Map<string, ClearingApplyResponse>>(new Map())
-  const [error, setError] = useState('')
+  const [legacyResults, setLegacyResults] = useState<Map<string, ClearingApplyResponse>>(new Map())
   const [confirmModal, setConfirmModal] = useState<DepositMatch | null>(null)
-  const [clearingHistory, setClearingHistory] = useState<ClearingAuditEntry[]>([])
-  const [sendingReport, setSendingReport] = useState(false)
-  const [reportResult, setReportResult] = useState<string | null>(null)
 
   useEffect(() => {
     setClearingHistory(loadClearingHistory())
-  }, [results])
+  }, [batchResult, legacyResults])
 
-  // Filter matched deposits by HX reference if toggle is on
+  // ── Filtered matches ──
   const filteredMatches = useMemo(() => {
-    if (!summary) return []
-    if (!hxFilterOnly) return summary.deposits
-    return summary.deposits.filter(
-      (m) => m.deposit.reference && m.deposit.reference.toUpperCase().includes('HX')
-    )
-  }, [summary, hxFilterOnly])
+    if (!reconciliation) return []
+    if (statusFilter === 'all') return reconciliation.matches
+    return reconciliation.matches.filter((m) => m.status === statusFilter)
+  }, [reconciliation, statusFilter])
 
-  const filteredUnmatchedDeposits = useMemo(() => {
-    if (!summary) return []
-    if (!hxFilterOnly) return summary.unmatchedDeposits
-    return summary.unmatchedDeposits.filter(
-      (d) => d.reference && d.reference.toUpperCase().includes('HX')
+  // Auto-select all matched items
+  const readyMatches = useMemo(() => {
+    if (!reconciliation) return []
+    return reconciliation.matches.filter(
+      (m) => m.status === 'matched' && m.clearingTxn
     )
-  }, [summary, hxFilterOnly])
+  }, [reconciliation])
+
+  // ── Handlers ──
 
   const applyPreset = (preset: string) => {
     const { from, to } = getPresetDates(preset)
@@ -115,23 +141,42 @@ export default function ClearingHelperPage() {
   const fetchSummary = async () => {
     setLoading(true)
     setError('')
-    setSummary(null)
-    setResults(new Map())
+    setReconciliation(null)
+    setLegacySummary(null)
+    setSelectedMatches(new Set())
+    setBatchResult(null)
+    setLegacyResults(new Map())
 
     try {
-      const toleranceCents = Math.round(toleranceDollars * 100)
-      const params = new URLSearchParams({
-        fromDate,
-        toDate,
-        tolerance: String(toleranceCents),
-      })
-      const res = await fetch(`/api/xero/clearing/summary?${params}`)
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || `Request failed (${res.status})`)
+      const params = new URLSearchParams({ fromDate, toDate })
+
+      if (viewMode === 'threeway') {
+        params.set('mode', 'threeway')
+        const res = await fetch(`/api/xero/clearing/summary?${params}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: ReconciliationResult = await res.json()
+        setReconciliation(data)
+        // Auto-select all ready matches
+        const readyIds = new Set(
+          data.matches
+            .filter((m) => m.status === 'matched' && m.clearingTxn)
+            .map((m) => m.clearingTxn!.transactionId)
+        )
+        setSelectedMatches(readyIds)
+      } else {
+        params.set('mode', 'legacy')
+        params.set('tolerance', String(Math.round(toleranceDollars * 100)))
+        const res = await fetch(`/api/xero/clearing/summary?${params}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: ClearingSummaryResponse = await res.json()
+        setLegacySummary(data)
       }
-      const data: ClearingSummaryResponse = await res.json()
-      setSummary(data)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -139,17 +184,93 @@ export default function ClearingHelperPage() {
     }
   }
 
-  const requestApplyForMatch = (match: DepositMatch) => {
+  const toggleMatchSelection = useCallback((transactionId: string) => {
+    setSelectedMatches((prev) => {
+      const next = new Set(prev)
+      if (next.has(transactionId)) {
+        next.delete(transactionId)
+      } else {
+        next.add(transactionId)
+      }
+      return next
+    })
+  }, [])
+
+  const selectAllReady = useCallback(() => {
+    const ids = new Set(readyMatches.map((m) => m.clearingTxn!.transactionId))
+    setSelectedMatches(ids)
+  }, [readyMatches])
+
+  const deselectAll = useCallback(() => {
+    setSelectedMatches(new Set())
+  }, [])
+
+  const reconcileSelected = async () => {
+    if (!reconciliation) return
+    setReconciling(true)
+    setError('')
+    setBatchResult(null)
+
+    const toReconcile = reconciliation.matches.filter(
+      (m) => m.status === 'matched' && m.clearingTxn && selectedMatches.has(m.clearingTxn.transactionId)
+    )
+
+    try {
+      const body = {
+        matches: toReconcile.map((m) => ({
+          invoiceNumber: m.invoiceNumber,
+          clearingTransactionId: m.clearingTxn!.transactionId,
+          amount: m.amount,
+          date: m.date,
+          reference: m.invoiceNumber,
+        })),
+        dryRun,
+      }
+
+      const res = await fetch('/api/xero/clearing/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Request failed (${res.status})`)
+      }
+
+      const data: BatchReconcileResponse = await res.json()
+      setBatchResult(data)
+
+      saveClearingEntry({
+        timestamp: new Date().toISOString(),
+        date: fromDate === toDate ? fromDate : `${fromDate}\u2013${toDate}`,
+        amount: toReconcile.reduce((s, m) => s + m.amount, 0),
+        clearingCount: toReconcile.length,
+        dryRun,
+        success: data.failed === 0,
+        batchMode: true,
+        batchTotal: data.total,
+        batchSucceeded: data.succeeded,
+      })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setReconciling(false)
+    }
+  }
+
+  // ── Legacy mode apply ──
+  const legacyApply = (match: DepositMatch) => {
     setConfirmModal(match)
   }
 
-  const confirmApply = async () => {
-    if (!confirmModal || !summary) return
+  const confirmLegacyApply = async () => {
+    if (!confirmModal || !legacySummary) return
     const match = confirmModal
     setLoading(true)
     setError('')
 
-    const newResults = new Map(results)
+    const newResults = new Map(legacyResults)
     const fee = match.impliedFee > 0 ? match.impliedFee : 0
 
     try {
@@ -179,7 +300,7 @@ export default function ClearingHelperPage() {
 
       saveClearingEntry({
         timestamp: new Date().toISOString(),
-        date: fromDate === toDate ? fromDate : `${fromDate}–${toDate}`,
+        date: fromDate === toDate ? fromDate : `${fromDate}\u2013${toDate}`,
         bankTransactionId: match.deposit.bankTransactionId,
         amount: match.deposit.amount,
         clearingCount: match.clearingTransactions.length,
@@ -198,35 +319,21 @@ export default function ClearingHelperPage() {
       })
     }
 
-    setResults(newResults)
-    setClearingHistory(loadClearingHistory())
+    setLegacyResults(newResults)
     setConfirmModal(null)
     setLoading(false)
   }
 
-  const sendReport = async () => {
-    if (!summary) return
-    setSendingReport(true)
-    setReportResult(null)
-    setError('')
-    try {
-      const res = await fetch('/api/xero/clearing/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summary, toleranceDollars }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || `Request failed (${res.status})`)
-      }
-      const data = await res.json()
-      setReportResult(data.message)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to send report')
-    } finally {
-      setSendingReport(false)
+  // ── Fee summary for three-way mode ──
+  const feeSummary = useMemo(() => {
+    if (!reconciliation) return null
+    const matchedItems = reconciliation.matches.filter((m) => m.calculatedFee && m.calculatedFee > 0)
+    const totalFees = matchedItems.reduce((s, m) => s + (m.calculatedFee ?? 0), 0)
+    return {
+      count: matchedItems.length,
+      totalFees: Math.round(totalFees * 100) / 100,
     }
-  }
+  }, [reconciliation])
 
   return (
     <div>
@@ -238,14 +345,13 @@ export default function ClearingHelperPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Clearing Account Reconciliation</h1>
           <p className="text-silver-400 text-sm">
-            Match NAB deposits to Halaxy clearing-account payments &mdash; expert / accounting tool
+            Three-way match: Halaxy payments &harr; Xero clearing &harr; NAB deposits
           </p>
         </div>
       </div>
 
       {/* Date range + controls */}
       <div className="card mb-6">
-        <h2 className="text-lg font-semibold text-white mb-3">Date Range</h2>
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <div className="flex items-center gap-2">
             <label className="text-silver-400 text-sm">From</label>
@@ -266,58 +372,94 @@ export default function ClearingHelperPage() {
             />
           </div>
           <div className="flex gap-1">
-            {(['today', 'yesterday', 'last7'] as const).map((preset) => (
+            {(['today', 'yesterday', 'last7', 'last30'] as const).map((preset) => (
               <button
                 key={preset}
                 onClick={() => applyPreset(preset)}
                 className="px-2 py-1 text-xs bg-silver-700/30 text-silver-300 rounded hover:bg-silver-700/50 transition-colors"
               >
-                {preset === 'today' ? 'Today' : preset === 'yesterday' ? 'Yesterday' : 'Last 7 days'}
+                {preset === 'today'
+                  ? 'Today'
+                  : preset === 'yesterday'
+                    ? 'Yesterday'
+                    : preset === 'last7'
+                      ? 'Last 7d'
+                      : 'Last 30d'}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Tolerance slider */}
+        {/* Mode + controls row */}
         <div className="flex flex-wrap items-center gap-4 mb-3">
-          <div className="flex items-center gap-2">
-            <label className="text-silver-400 text-sm">Fee tolerance</label>
-            <input
-              type="range"
-              min={0}
-              max={50}
-              step={0.5}
-              value={toleranceDollars}
-              onChange={(e) => setToleranceDollars(Number(e.target.value))}
-              className="w-32 accent-slate-blue"
-            />
-            <span className="text-white text-sm font-mono w-16">
-              ${toleranceDollars.toFixed(2)}
-            </span>
+          {/* View mode tabs */}
+          <div className="flex rounded-lg overflow-hidden border border-silver-700/30">
+            <button
+              onClick={() => setViewMode('threeway')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'threeway'
+                  ? 'bg-slate-blue/40 text-white'
+                  : 'bg-charcoal text-silver-400 hover:text-white'
+              }`}
+            >
+              Three-Way Match
+            </button>
+            <button
+              onClick={() => setViewMode('legacy')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'legacy'
+                  ? 'bg-slate-blue/40 text-white'
+                  : 'bg-charcoal text-silver-400 hover:text-white'
+              }`}
+            >
+              Legacy (Subset-Sum)
+            </button>
           </div>
 
-          {/* Fee account code */}
-          <div className="flex items-center gap-2">
-            <label className="text-silver-400 text-sm">Fee account</label>
-            <input
-              type="text"
-              value={feeAccountCode}
-              onChange={(e) => setFeeAccountCode(e.target.value)}
-              placeholder="e.g. 404"
-              className="bg-charcoal border border-silver-700/30 rounded px-2 py-1 text-white text-sm w-24 font-mono"
-            />
-          </div>
-
-          {/* HX filter */}
+          {/* Dry run toggle */}
           <label className="flex items-center gap-2 text-sm text-silver-300">
             <input
               type="checkbox"
-              checked={hxFilterOnly}
-              onChange={(e) => setHxFilterOnly(e.target.checked)}
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
               className="rounded"
             />
-            HX refs only
+            Dry Run
           </label>
+          <span className="text-xs text-silver-500">
+            {dryRun ? '(Preview only)' : 'Live mode \u2014 changes will be applied'}
+          </span>
+
+          {/* Legacy-only controls */}
+          {viewMode === 'legacy' && (
+            <>
+              <div className="flex items-center gap-2">
+                <label className="text-silver-400 text-sm">Tolerance</label>
+                <input
+                  type="range"
+                  min={0}
+                  max={50}
+                  step={0.5}
+                  value={toleranceDollars}
+                  onChange={(e) => setToleranceDollars(Number(e.target.value))}
+                  className="w-24 accent-slate-blue"
+                />
+                <span className="text-white text-sm font-mono w-14">
+                  ${toleranceDollars.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-silver-400 text-sm">Fee account</label>
+                <input
+                  type="text"
+                  value={feeAccountCode}
+                  onChange={(e) => setFeeAccountCode(e.target.value)}
+                  placeholder="e.g. 404"
+                  className="bg-charcoal border border-silver-700/30 rounded px-2 py-1 text-white text-sm w-20 font-mono"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <button
@@ -336,160 +478,751 @@ export default function ClearingHelperPage() {
         </div>
       )}
 
-      {/* Summary results */}
-      {summary && (
-        <>
-          {/* Controls */}
-          <div className="card mb-6">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm text-silver-300">
-                <input
-                  type="checkbox"
-                  checked={dryRun}
-                  onChange={(e) => setDryRun(e.target.checked)}
-                  className="rounded"
-                />
-                Dry Run Mode
-              </label>
-              <span className="text-xs text-silver-500">
-                {dryRun
-                  ? '(Preview only \u2014 no changes will be made)'
-                  : '\u26A0\uFE0F Live mode \u2014 changes will be applied to Xero'}
-              </span>
-            </div>
+      {/* ── Three-Way Mode Results ── */}
+      {viewMode === 'threeway' && reconciliation && (
+        <ThreeWayView
+          reconciliation={reconciliation}
+          filteredMatches={filteredMatches}
+          selectedMatches={selectedMatches}
+          statusFilter={statusFilter}
+          readyMatches={readyMatches}
+          feeSummary={feeSummary}
+          dryRun={dryRun}
+          reconciling={reconciling}
+          batchResult={batchResult}
+          onStatusFilterChange={setStatusFilter}
+          onToggleMatch={toggleMatchSelection}
+          onSelectAll={selectAllReady}
+          onDeselectAll={deselectAll}
+          onReconcile={reconcileSelected}
+        />
+      )}
+
+      {/* ── Legacy Mode Results ── */}
+      {viewMode === 'legacy' && legacySummary && (
+        <LegacyView
+          summary={legacySummary}
+          results={legacyResults}
+          loading={loading}
+          dryRun={dryRun}
+          feeAccountCode={feeAccountCode}
+          onApply={legacyApply}
+        />
+      )}
+
+      {/* Legacy confirm modal */}
+      {confirmModal && (
+        <ConfirmModal
+          match={confirmModal}
+          dryRun={dryRun}
+          loading={loading}
+          feeAccountCode={feeAccountCode}
+          onCancel={() => setConfirmModal(null)}
+          onConfirm={confirmLegacyApply}
+        />
+      )}
+
+      {/* History */}
+      {clearingHistory.length > 0 && (
+        <div className="card mt-6">
+          <h2 className="text-lg font-semibold text-white mb-3">History</h2>
+          <div className="space-y-1 text-xs font-mono text-silver-400 max-h-40 overflow-y-auto">
+            {clearingHistory.slice(0, 20).map((e, i) => (
+              <div key={i}>
+                {new Date(e.timestamp).toLocaleString()} &mdash; {e.date} &mdash; $
+                {e.amount.toFixed(2)}
+                {e.batchMode
+                  ? ` (batch: ${e.batchSucceeded}/${e.batchTotal})`
+                  : e.feeAmount
+                    ? ` (fee $${e.feeAmount.toFixed(2)})`
+                    : ''}{' '}
+                &mdash; {e.clearingCount} txns &mdash;{' '}
+                {e.dryRun ? 'dry run' : e.success ? '\u2713' : '\u2717'}
+              </div>
+            ))}
           </div>
-
-          {/* Stats bar */}
-          <div className="card mb-6">
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <div className="text-silver-400">
-                Deposits: <span className="text-white font-medium">{summary.deposits.length + summary.unmatchedDeposits.length}</span>
-              </div>
-              <div className="text-green-400">
-                Matched: <span className="font-medium">{filteredMatches.length}</span>
-              </div>
-              <div className="text-yellow-400">
-                Unmatched: <span className="font-medium">{filteredUnmatchedDeposits.length}</span>
-              </div>
-              <div className="text-silver-400">
-                Clearing txns: <span className="text-white font-medium">
-                  {summary.deposits.reduce((s, m) => s + m.clearingTransactions.length, 0) + summary.unmatchedClearing.length}
-                </span>
-              </div>
-              {summary.toleranceCents !== undefined && (
-                <div className="text-silver-400">
-                  Tolerance: <span className="text-white font-medium">${(summary.toleranceCents / 100).toFixed(2)}</span>
-                </div>
-              )}
-              <div className="ml-auto">
-                <button
-                  onClick={sendReport}
-                  disabled={sendingReport}
-                  className="px-3 py-1.5 text-sm bg-purple-700 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors"
-                >
-                  {sendingReport ? 'Sending...' : 'Email Report'}
-                </button>
-              </div>
-            </div>
-            {reportResult && (
-              <div className="mt-3 text-sm text-green-400 bg-green-900/20 border border-green-500/30 rounded p-2">
-                {reportResult}
-              </div>
-            )}
-          </div>
-
-          {/* Matched deposits */}
-          {filteredMatches.length > 0 ? (
-            <div className="space-y-4 mb-6">
-              {filteredMatches.map((match) => (
-                <DepositCard
-                  key={match.deposit.bankTransactionId}
-                  match={match}
-                  result={results.get(match.deposit.bankTransactionId)}
-                  onApplyTransfer={() => requestApplyForMatch(match)}
-                  loading={loading}
-                  dryRun={dryRun}
-                  feeAccountCode={feeAccountCode}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="card mb-6">
-              <p className="text-silver-400">
-                No matched deposits found for {summary.date}
-                {hxFilterOnly ? ' (HX filter active)' : ''}
-              </p>
-            </div>
-          )}
-
-          {/* Unmatched deposits */}
-          {filteredUnmatchedDeposits.length > 0 && (
-            <div className="card mb-6">
-              <h2 className="text-lg font-semibold text-yellow-400 mb-3">
-                Unmatched Deposits ({filteredUnmatchedDeposits.length})
-              </h2>
-              <div className="space-y-2 text-sm">
-                {filteredUnmatchedDeposits.map((d) => (
-                  <div key={d.bankTransactionId} className="text-silver-300">
-                    ${d.amount.toFixed(2)} &mdash; ref: {d.reference || '(none)'} &mdash; {d.date}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Unmatched clearing transactions */}
-          {summary.unmatchedClearing.length > 0 && (
-            <div className="card mb-6">
-              <h2 className="text-lg font-semibold text-yellow-400 mb-3">
-                Unmatched Clearing Transactions ({summary.unmatchedClearing.length})
-              </h2>
-              <div className="space-y-2 text-sm">
-                {summary.unmatchedClearing.map((c) => (
-                  <div key={c.transactionId} className="text-silver-300">
-                    ${c.amount.toFixed(2)} &mdash; {c.invoiceNumber || c.reference || '(no ref)'} &mdash; {c.date}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Confirm modal */}
-          {confirmModal && (
-            <ConfirmModal
-              match={confirmModal}
-              dryRun={dryRun}
-              loading={loading}
-              feeAccountCode={feeAccountCode}
-              onCancel={() => setConfirmModal(null)}
-              onConfirm={confirmApply}
-            />
-          )}
-
-          {/* History */}
-          {clearingHistory.length > 0 && (
-            <div className="card">
-              <h2 className="text-lg font-semibold text-white mb-3">History</h2>
-              <div className="space-y-1 text-xs font-mono text-silver-400 max-h-40 overflow-y-auto">
-                {clearingHistory.slice(0, 20).map((e, i) => (
-                  <div key={i}>
-                    {new Date(e.timestamp).toLocaleString()} &mdash; {e.date} &mdash; $
-                    {e.amount.toFixed(2)}
-                    {e.feeAmount ? ` (fee $${e.feeAmount.toFixed(2)})` : ''} &mdash;{' '}
-                    {e.clearingCount} txns &mdash;{' '}
-                    {e.dryRun ? 'dry run' : e.success ? '\u2713' : '\u2717'}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       )}
     </div>
   )
 }
 
-// ── Confirm Modal ──
+// ── Three-Way View ──
+
+function ThreeWayView({
+  reconciliation,
+  filteredMatches,
+  selectedMatches,
+  statusFilter,
+  readyMatches,
+  feeSummary,
+  dryRun,
+  reconciling,
+  batchResult,
+  onStatusFilterChange,
+  onToggleMatch,
+  onSelectAll,
+  onDeselectAll,
+  onReconcile,
+}: {
+  reconciliation: ReconciliationResult
+  filteredMatches: ThreeWayMatch[]
+  selectedMatches: Set<string>
+  statusFilter: ThreeWayMatchStatus | 'all'
+  readyMatches: ThreeWayMatch[]
+  feeSummary: { count: number; totalFees: number } | null
+  dryRun: boolean
+  reconciling: boolean
+  batchResult: BatchReconcileResponse | null
+  onStatusFilterChange: (status: ThreeWayMatchStatus | 'all') => void
+  onToggleMatch: (id: string) => void
+  onSelectAll: () => void
+  onDeselectAll: () => void
+  onReconcile: () => void
+}) {
+  const { stats } = reconciliation
+  const selectedReadyCount = readyMatches.filter(
+    (m) => m.clearingTxn && selectedMatches.has(m.clearingTxn.transactionId)
+  ).length
+  const selectedAmount = readyMatches
+    .filter((m) => m.clearingTxn && selectedMatches.has(m.clearingTxn.transactionId))
+    .reduce((s, m) => s + m.amount, 0)
+
+  return (
+    <>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <SummaryCard
+          label="Clearing Balance"
+          value={`$${reconciliation.clearingBalance.toFixed(2)}`}
+          sublabel={`Target: $${reconciliation.expectedBalance.toFixed(2)}`}
+          colour="text-white"
+        />
+        <SummaryCard
+          label="Ready to Reconcile"
+          value={String(stats.matched)}
+          sublabel={`$${stats.readyAmount.toFixed(2)}`}
+          colour="text-green-400"
+          onClick={() => onStatusFilterChange('matched')}
+        />
+        <SummaryCard
+          label="Awaiting Deposit"
+          value={String(stats.awaitingDeposit)}
+          sublabel="Money not yet in NAB"
+          colour="text-yellow-400"
+          onClick={() => onStatusFilterChange('awaiting_deposit')}
+        />
+        <SummaryCard
+          label="Issues"
+          value={String(stats.syncFailed + stats.manualEntry + stats.orphanDeposits)}
+          sublabel={`${stats.syncFailed} sync fail, ${stats.manualEntry} manual, ${stats.orphanDeposits} orphan`}
+          colour="text-red-400"
+          onClick={() => onStatusFilterChange('all')}
+        />
+      </div>
+
+      {/* Batch Actions */}
+      <div className="card mb-6">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Status filter tabs */}
+          <div className="flex gap-1">
+            {(
+              [
+                { key: 'all', label: 'All', count: stats.total },
+                { key: 'matched', label: 'Ready', count: stats.matched },
+                { key: 'awaiting_deposit', label: 'Awaiting', count: stats.awaitingDeposit },
+                { key: 'sync_failed', label: 'Sync Fail', count: stats.syncFailed },
+                { key: 'manual_entry', label: 'Manual', count: stats.manualEntry },
+                { key: 'orphan_deposit', label: 'Orphan', count: stats.orphanDeposits },
+              ] as Array<{ key: ThreeWayMatchStatus | 'all'; label: string; count: number }>
+            )
+              .filter((t) => t.key === 'all' || t.count > 0)
+              .map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => onStatusFilterChange(tab.key)}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    statusFilter === tab.key
+                      ? 'bg-slate-blue/40 text-white'
+                      : 'bg-silver-700/20 text-silver-400 hover:text-white'
+                  }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
+          </div>
+
+          {/* Selection controls */}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={onSelectAll}
+              className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
+            >
+              Select all ready
+            </button>
+            <button
+              onClick={onDeselectAll}
+              className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
+            >
+              Deselect all
+            </button>
+          </div>
+
+          {/* Reconcile button */}
+          <button
+            onClick={onReconcile}
+            disabled={reconciling || selectedReadyCount === 0}
+            className="px-4 py-2 bg-green-700 text-white text-sm font-medium rounded hover:bg-green-600 disabled:opacity-50 transition-colors"
+          >
+            {reconciling
+              ? 'Reconciling\u2026'
+              : dryRun
+                ? `Preview Reconcile (${selectedReadyCount} items, $${selectedAmount.toFixed(2)})`
+                : `Reconcile ${selectedReadyCount} items ($${selectedAmount.toFixed(2)})`}
+          </button>
+        </div>
+      </div>
+
+      {/* Batch result */}
+      {batchResult && (
+        <div
+          className={`card mb-6 border ${
+            batchResult.failed === 0
+              ? 'border-green-500/40 bg-green-900/10'
+              : 'border-red-500/40 bg-red-900/10'
+          }`}
+        >
+          <h3 className="text-sm font-semibold text-white mb-2">
+            {batchResult.dryRun ? 'Dry Run Result' : 'Reconciliation Result'}
+          </h3>
+          <div className="text-sm text-silver-300">
+            <p>
+              Total: {batchResult.total} | Succeeded: {batchResult.succeeded} | Failed:{' '}
+              {batchResult.failed}
+            </p>
+          </div>
+          {batchResult.results.some((r) => !r.success) && (
+            <div className="mt-2 space-y-1">
+              {batchResult.results
+                .filter((r) => !r.success)
+                .map((r, i) => (
+                  <div key={i} className="text-xs text-red-400">
+                    {r.invoiceNumber}: {r.message}
+                  </div>
+                ))}
+            </div>
+          )}
+          {!batchResult.dryRun && batchResult.failed === 0 && (
+            <p className="mt-2 text-xs text-silver-400">
+              Bank transfers created. Go to Xero &rarr; Bank Accounts &rarr; NAB &rarr;
+              Reconcile to confirm.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Reconciliation Table */}
+      <div className="card mb-6 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-silver-400 border-b border-silver-700/30">
+              <th className="pb-2 pr-2 w-8"></th>
+              <th className="pb-2 pr-3">Status</th>
+              <th className="pb-2 pr-3">Invoice</th>
+              <th className="pb-2 pr-3">Patient</th>
+              <th className="pb-2 pr-3 text-right">Amount</th>
+              <th className="pb-2 pr-3">Halaxy</th>
+              <th className="pb-2 pr-3">Clearing</th>
+              <th className="pb-2 pr-3">NAB</th>
+              <th className="pb-2 pr-3 text-right">Fee (est.)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredMatches.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="py-6 text-center text-silver-400">
+                  No matches found for the selected filter.
+                </td>
+              </tr>
+            ) : (
+              filteredMatches.map((match, idx) => (
+                <ThreeWayRow
+                  key={match.clearingTxn?.transactionId ?? match.halaxyPayment?.id ?? `orphan-${idx}`}
+                  match={match}
+                  selected={
+                    match.status === 'matched' &&
+                    !!match.clearingTxn &&
+                    selectedMatches.has(match.clearingTxn.transactionId)
+                  }
+                  onToggle={() => {
+                    if (match.clearingTxn) {
+                      onToggleMatch(match.clearingTxn.transactionId)
+                    }
+                  }}
+                  batchResult={batchResult}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Fee Summary */}
+      {feeSummary && feeSummary.count > 0 && (
+        <div className="card mb-6">
+          <h3 className="text-sm font-semibold text-white mb-2">Fee Summary (Informational)</h3>
+          <p className="text-sm text-silver-300">
+            {feeSummary.count} payments with estimated fees totalling{' '}
+            <span className="text-amber-400 font-medium">${feeSummary.totalFees.toFixed(2)}</span>
+          </p>
+          <p className="text-xs text-silver-500 mt-1">
+            Bronze tier: 1.90% + $1.00 (incl. GST). Charged to credit card, not deducted from deposits.
+          </p>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Summary Card ──
+
+function SummaryCard({
+  label,
+  value,
+  sublabel,
+  colour,
+  onClick,
+}: {
+  label: string
+  value: string
+  sublabel: string
+  colour: string
+  onClick?: () => void
+}) {
+  const Wrapper = onClick ? 'button' : 'div'
+  return (
+    <Wrapper
+      onClick={onClick}
+      className={`card text-left ${onClick ? 'cursor-pointer hover:border-silver-600/50' : ''}`}
+    >
+      <div className="text-xs text-silver-400 mb-1">{label}</div>
+      <div className={`text-2xl font-bold ${colour}`}>{value}</div>
+      <div className="text-xs text-silver-500 mt-1">{sublabel}</div>
+    </Wrapper>
+  )
+}
+
+// ── Three-Way Table Row ──
+
+function ThreeWayRow({
+  match,
+  selected,
+  onToggle,
+  batchResult,
+}: {
+  match: ThreeWayMatch
+  selected: boolean
+  onToggle: () => void
+  batchResult: BatchReconcileResponse | null
+}) {
+  const canSelect = match.status === 'matched' && !!match.clearingTxn
+
+  // Check if this match has a batch result
+  const itemResult = batchResult?.results.find(
+    (r) => r.invoiceNumber === match.invoiceNumber
+  )
+
+  return (
+    <tr className="border-b border-silver-700/10 hover:bg-silver-800/20">
+      {/* Checkbox */}
+      <td className="py-2 pr-2">
+        {canSelect && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            className="rounded"
+          />
+        )}
+      </td>
+
+      {/* Status */}
+      <td className="py-2 pr-3">
+        <StatusBadge status={match.status} itemResult={itemResult} />
+      </td>
+
+      {/* Invoice */}
+      <td className="py-2 pr-3">
+        <span className="font-mono text-white text-xs">
+          {match.invoiceNumber || '\u2014'}
+        </span>
+        {match.matchMethod === 'invoice_number' && (
+          <span className="ml-1 text-[9px] text-purple-400">INV</span>
+        )}
+        {match.matchMethod === 'amount_date' && (
+          <span className="ml-1 text-[9px] text-yellow-400">AMT</span>
+        )}
+      </td>
+
+      {/* Patient */}
+      <td className="py-2 pr-3 text-silver-300 text-xs">{match.patientName || '\u2014'}</td>
+
+      {/* Amount */}
+      <td className="py-2 pr-3 text-right text-white font-mono text-xs">
+        ${match.amount.toFixed(2)}
+      </td>
+
+      {/* Halaxy */}
+      <td className="py-2 pr-3">
+        {match.halaxyPayment ? (
+          <div className="text-xs">
+            <span className="text-green-400">{match.halaxyPayment.method}</span>
+            <span className="text-silver-500 ml-1">{match.halaxyPayment.created.slice(0, 10)}</span>
+          </div>
+        ) : (
+          <span className="text-silver-600 text-xs">\u2014</span>
+        )}
+      </td>
+
+      {/* Clearing */}
+      <td className="py-2 pr-3">
+        {match.clearingTxn ? (
+          <div className="text-xs">
+            <span className="text-blue-400">Ref: {match.clearingTxn.reference || match.clearingTxn.invoiceNumber}</span>
+            <span className="text-silver-500 ml-1">{match.clearingTxn.date}</span>
+          </div>
+        ) : (
+          <span className="text-silver-600 text-xs">\u2014</span>
+        )}
+      </td>
+
+      {/* NAB */}
+      <td className="py-2 pr-3">
+        {match.bankDeposit ? (
+          <div className="text-xs">
+            <span className="text-emerald-400">${match.bankDeposit.amount.toFixed(2)}</span>
+            <span className="text-silver-500 ml-1">{match.bankDeposit.date}</span>
+          </div>
+        ) : (
+          <span className="text-silver-600 text-xs">\u2014</span>
+        )}
+      </td>
+
+      {/* Fee */}
+      <td className="py-2 text-right text-xs text-amber-400/70 font-mono">
+        {match.calculatedFee ? `$${match.calculatedFee.toFixed(2)}` : '\u2014'}
+      </td>
+    </tr>
+  )
+}
+
+// ── Status Badge ──
+
+function StatusBadge({
+  status,
+  itemResult,
+}: {
+  status: ThreeWayMatchStatus
+  itemResult?: { success: boolean; message: string } | null
+}) {
+  // If we have a batch result for this item, show that instead
+  if (itemResult) {
+    if (itemResult.success) {
+      return (
+        <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-green-900/40 text-green-300 border border-green-500/30">
+          Done
+        </span>
+      )
+    }
+    return (
+      <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-red-900/40 text-red-300 border border-red-500/30" title={itemResult.message}>
+        Failed
+      </span>
+    )
+  }
+
+  const config: Record<ThreeWayMatchStatus, { label: string; cls: string }> = {
+    matched: {
+      label: 'Ready',
+      cls: 'bg-green-900/40 text-green-300 border-green-500/30',
+    },
+    awaiting_deposit: {
+      label: 'Awaiting',
+      cls: 'bg-yellow-900/40 text-yellow-300 border-yellow-500/30',
+    },
+    sync_failed: {
+      label: 'Sync Fail',
+      cls: 'bg-red-900/40 text-red-300 border-red-500/30',
+    },
+    manual_entry: {
+      label: 'Manual',
+      cls: 'bg-blue-900/40 text-blue-300 border-blue-500/30',
+    },
+    orphan_deposit: {
+      label: 'Orphan',
+      cls: 'bg-orange-900/40 text-orange-300 border-orange-500/30',
+    },
+  }
+
+  const { label, cls } = config[status]
+  return (
+    <span className={`inline-block px-1.5 py-0.5 text-[10px] font-medium rounded border ${cls}`}>
+      {label}
+    </span>
+  )
+}
+
+// ══════════════════════════════════════════
+// Legacy View (preserved from original)
+// ══════════════════════════════════════════
+
+function LegacyView({
+  summary,
+  results,
+  loading,
+  dryRun,
+  feeAccountCode,
+  onApply,
+}: {
+  summary: ClearingSummaryResponse
+  results: Map<string, ClearingApplyResponse>
+  loading: boolean
+  dryRun: boolean
+  feeAccountCode: string
+  onApply: (match: DepositMatch) => void
+}) {
+  return (
+    <>
+      {/* Stats bar */}
+      <div className="card mb-6">
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <div className="text-silver-400">
+            Deposits:{' '}
+            <span className="text-white font-medium">
+              {summary.deposits.length + summary.unmatchedDeposits.length}
+            </span>
+          </div>
+          <div className="text-green-400">
+            Matched: <span className="font-medium">{summary.deposits.length}</span>
+          </div>
+          <div className="text-yellow-400">
+            Unmatched: <span className="font-medium">{summary.unmatchedDeposits.length}</span>
+          </div>
+          <div className="text-silver-400">
+            Clearing txns:{' '}
+            <span className="text-white font-medium">
+              {summary.deposits.reduce((s, m) => s + m.clearingTransactions.length, 0) +
+                summary.unmatchedClearing.length}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Matched deposits */}
+      {summary.deposits.length > 0 ? (
+        <div className="space-y-4 mb-6">
+          {summary.deposits.map((match) => (
+            <LegacyDepositCard
+              key={match.deposit.bankTransactionId}
+              match={match}
+              result={results.get(match.deposit.bankTransactionId)}
+              onApplyTransfer={() => onApply(match)}
+              loading={loading}
+              dryRun={dryRun}
+              feeAccountCode={feeAccountCode}
+              halaxyEnriched={summary.halaxyEnriched ?? false}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="card mb-6">
+          <p className="text-silver-400">No matched deposits found for {summary.date}</p>
+        </div>
+      )}
+
+      {/* Unmatched deposits */}
+      {summary.unmatchedDeposits.length > 0 && (
+        <div className="card mb-6">
+          <h2 className="text-lg font-semibold text-yellow-400 mb-3">
+            Unmatched Deposits ({summary.unmatchedDeposits.length})
+          </h2>
+          <div className="space-y-2 text-sm">
+            {summary.unmatchedDeposits.map((d) => (
+              <div key={d.bankTransactionId} className="text-silver-300">
+                ${d.amount.toFixed(2)} &mdash; ref: {d.reference || '(none)'} &mdash; {d.date}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Unmatched clearing */}
+      {summary.unmatchedClearing.length > 0 && (
+        <div className="card mb-6">
+          <h2 className="text-lg font-semibold text-yellow-400 mb-3">
+            Unmatched Clearing ({summary.unmatchedClearing.length})
+          </h2>
+          <div className="space-y-2 text-sm">
+            {summary.unmatchedClearing.map((c) => (
+              <div key={c.transactionId} className="text-silver-300">
+                ${c.amount.toFixed(2)} &mdash; {c.invoiceNumber || c.reference || '(no ref)'} &mdash;{' '}
+                {c.date}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Legacy Deposit Card ──
+
+function LegacyDepositCard({
+  match,
+  result,
+  onApplyTransfer,
+  loading,
+  dryRun,
+  feeAccountCode,
+  halaxyEnriched,
+}: {
+  match: DepositMatch
+  result?: ClearingApplyResponse
+  onApplyTransfer: () => void
+  loading: boolean
+  dryRun: boolean
+  feeAccountCode: string
+  halaxyEnriched: boolean
+}) {
+  const isApplied = result?.success && !result.dryRun
+
+  return (
+    <div className="card border border-silver-700/30">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <div className="text-white font-semibold">
+            NAB Deposit: ${match.deposit.amount.toFixed(2)}
+          </div>
+          <div className="text-silver-400 text-xs">
+            {match.deposit.date} &mdash; ref: {match.deposit.reference || '(none)'}
+          </div>
+        </div>
+        <ConfidenceBadge confidence={match.matchConfidence} fee={match.impliedFee} />
+      </div>
+
+      <div className="ml-8">
+        <div className="text-silver-400 text-xs mb-1">
+          {match.clearingTransactions.length} clearing payment(s) &mdash; total: $
+          {match.total.toFixed(2)}
+        </div>
+        <div className="max-h-32 overflow-y-auto space-y-0.5">
+          {match.clearingTransactions.map((c) => (
+            <LegacyClearingTxnRow key={c.transactionId} txn={c} halaxyEnriched={halaxyEnriched} />
+          ))}
+        </div>
+      </div>
+
+      {match.matchConfidence === 'fee-adjusted' && (
+        <div className="mt-2 ml-8 text-xs text-amber-400">
+          Implied fee: ${match.impliedFee.toFixed(2)}
+          {feeAccountCode ? ` \u2192 account ${feeAccountCode}` : ' (set fee account above)'}
+        </div>
+      )}
+
+      <div className="mt-3 ml-8">
+        <button
+          onClick={onApplyTransfer}
+          disabled={loading}
+          className="px-3 py-1.5 text-sm bg-blue-700 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+        >
+          {loading ? 'Applying\u2026' : dryRun ? 'Apply transfer (dry run)' : 'Apply transfer'}
+        </button>
+      </div>
+
+      {result && (
+        <div
+          className={`mt-3 ml-8 text-xs p-2 rounded ${
+            result.success ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'
+          }`}
+        >
+          {result.dryRun ? '\uD83D\uDD0D ' : result.success ? '\u2705 ' : '\u274C '}
+          {result.message}
+          {isApplied && (
+            <p className="mt-1 text-silver-400">
+              Transfer created. Go to Xero &rarr; Bank Accounts &rarr; NAB &rarr; Reconcile to confirm.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Legacy Clearing Txn Row ──
+
+function LegacyClearingTxnRow({ txn, halaxyEnriched }: { txn: ClearingTransaction; halaxyEnriched: boolean }) {
+  return (
+    <div className="text-silver-300 text-xs font-mono flex items-center gap-1.5 flex-wrap">
+      <span>${txn.amount.toFixed(2)}</span>
+      <span className="text-silver-600">&mdash;</span>
+      <span>{txn.invoiceNumber || txn.reference}</span>
+      <span className="text-silver-600">&mdash;</span>
+      <span>{txn.date}</span>
+      {halaxyEnriched && txn.halaxyPatientName && (
+        <>
+          <span className="text-silver-600">&mdash;</span>
+          <span className="text-purple-400 font-sans">{txn.halaxyPatientName}</span>
+        </>
+      )}
+      {halaxyEnriched && txn.halaxyPaymentMethod && (
+        <PaymentMethodBadge method={txn.halaxyPaymentMethod} />
+      )}
+    </div>
+  )
+}
+
+// ── Shared Components ──
+
+function PaymentMethodBadge({ method }: { method: string }) {
+  const colours: Record<string, string> = {
+    braintree: 'bg-indigo-900/40 text-indigo-300 border-indigo-500/30',
+    cash: 'bg-green-900/40 text-green-300 border-green-500/30',
+    eft: 'bg-cyan-900/40 text-cyan-300 border-cyan-500/30',
+    eftpos: 'bg-cyan-900/40 text-cyan-300 border-cyan-500/30',
+  }
+  const key = method.toLowerCase()
+  const cls = colours[key] ?? 'bg-silver-800/40 text-silver-300 border-silver-600/30'
+
+  return (
+    <span className={`inline-block px-1.5 py-0.5 text-[10px] font-medium rounded border ${cls}`}>
+      {method}
+    </span>
+  )
+}
+
+function ConfidenceBadge({ confidence, fee }: { confidence: MatchConfidence; fee: number }) {
+  switch (confidence) {
+    case 'exact':
+      return (
+        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-green-900/40 text-green-400 border border-green-500/30">
+          Exact match
+        </span>
+      )
+    case 'fee-adjusted':
+      return (
+        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-amber-900/40 text-amber-400 border border-amber-500/30">
+          Fee: ${fee.toFixed(2)}
+        </span>
+      )
+    case 'uncertain':
+      return (
+        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-red-900/40 text-red-400 border border-red-500/30">
+          Delta: ${fee.toFixed(2)} &mdash; manual review
+        </span>
+      )
+  }
+}
 
 function ConfirmModal({
   match,
@@ -527,8 +1260,13 @@ function ConfirmModal({
           {hasFee && (
             <div className="mt-2 p-2 bg-amber-900/20 border border-amber-500/30 rounded text-xs space-y-1">
               <p className="text-amber-300 font-medium">Fee-adjusted match</p>
-              <p>1. Spend Money: ${match.impliedFee.toFixed(2)} from clearing &rarr; {feeAccountCode || '(no account set)'}</p>
-              <p>2. Bank Transfer: ${match.deposit.amount.toFixed(2)} from clearing &rarr; NAB</p>
+              <p>
+                1. Spend Money: ${match.impliedFee.toFixed(2)} from clearing &rarr;{' '}
+                {feeAccountCode || '(no account set)'}
+              </p>
+              <p>
+                2. Bank Transfer: ${match.deposit.amount.toFixed(2)} from clearing &rarr; NAB
+              </p>
             </div>
           )}
         </div>
@@ -562,119 +1300,6 @@ function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-// ── Confidence badge ──
-
-function ConfidenceBadge({ confidence, fee }: { confidence: MatchConfidence; fee: number }) {
-  switch (confidence) {
-    case 'exact':
-      return (
-        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-green-900/40 text-green-400 border border-green-500/30">
-          Exact match
-        </span>
-      )
-    case 'fee-adjusted':
-      return (
-        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-amber-900/40 text-amber-400 border border-amber-500/30">
-          Fee: ${fee.toFixed(2)}
-        </span>
-      )
-    case 'uncertain':
-      return (
-        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-red-900/40 text-red-400 border border-red-500/30">
-          Delta: ${fee.toFixed(2)} &mdash; manual review
-        </span>
-      )
-  }
-}
-
-// ── Deposit card ──
-
-function DepositCard({
-  match,
-  result,
-  onApplyTransfer,
-  loading,
-  dryRun,
-  feeAccountCode,
-}: {
-  match: DepositMatch
-  result?: ClearingApplyResponse
-  onApplyTransfer: () => void
-  loading: boolean
-  dryRun: boolean
-  feeAccountCode: string
-}) {
-  const isApplied = result?.success && !result.dryRun
-
-  return (
-    <div className="card border border-silver-700/30">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <div className="text-white font-semibold">
-            NAB Deposit: ${match.deposit.amount.toFixed(2)}
-          </div>
-          <div className="text-silver-400 text-xs">
-            {match.deposit.date} &mdash; ref: {match.deposit.reference || '(none)'}
-          </div>
-        </div>
-        <div className="text-right">
-          <ConfidenceBadge confidence={match.matchConfidence} fee={match.impliedFee} />
-        </div>
-      </div>
-
-      {/* Clearing transactions */}
-      <div className="ml-8">
-        <div className="text-silver-400 text-xs mb-1">
-          {match.clearingTransactions.length} clearing payment(s) &mdash; total: $
-          {match.total.toFixed(2)}
-        </div>
-        <div className="max-h-32 overflow-y-auto space-y-0.5">
-          {match.clearingTransactions.map((c) => (
-            <div key={c.transactionId} className="text-silver-300 text-xs font-mono">
-              ${c.amount.toFixed(2)} &mdash; {c.invoiceNumber || c.reference} &mdash; {c.date}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Fee info */}
-      {match.matchConfidence === 'fee-adjusted' && (
-        <div className="mt-2 ml-8 text-xs text-amber-400">
-          Implied fee: ${match.impliedFee.toFixed(2)}
-          {feeAccountCode ? ` \u2192 account ${feeAccountCode}` : ' (set fee account above)'}
-        </div>
-      )}
-
-      <div className="mt-3 ml-8">
-        <button
-          onClick={onApplyTransfer}
-          disabled={loading}
-          className="px-3 py-1.5 text-sm bg-blue-700 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-        >
-          {loading ? 'Applying\u2026' : dryRun ? 'Apply transfer (dry run)' : 'Apply transfer'}
-        </button>
-      </div>
-
-      {/* Result */}
-      {result && (
-        <div
-          className={`mt-3 ml-8 text-xs p-2 rounded ${
-            result.success ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'
-          }`}
-        >
-          {result.dryRun ? '\uD83D\uDD0D ' : result.success ? '\u2705 ' : '\u274C '}
-          {result.message}
-          {isApplied && (
-            <p className="mt-1 text-silver-400">
-              Transfer created. Go to Xero &rarr; Bank Accounts &rarr; NAB &rarr; Reconcile to confirm.
-            </p>
-          )}
-        </div>
-      )}
     </div>
   )
 }

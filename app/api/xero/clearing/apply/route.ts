@@ -1,15 +1,82 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/xero/auth'
-import { applyClearing } from '@/lib/xero/client'
-import type { ClearingApplyRequest, ClearingApplyResponse } from '@/lib/xero/types'
+import { applyClearing, createBatchBankTransfers } from '@/lib/xero/client'
+import type {
+  ClearingApplyRequest,
+  ClearingApplyResponse,
+  BatchReconcileRequest,
+  BatchReconcileResponse,
+} from '@/lib/xero/types'
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
   try {
-    const body: ClearingApplyRequest = await request.json()
-    const { bankTransactionId, clearingTransactionIds, dryRun, feeAmount, feeAccountCode } = body
+    const body = await request.json()
+
+    // ── Batch reconcile mode (three-way matching) ──
+    if ('matches' in body && Array.isArray(body.matches)) {
+      const { matches, dryRun } = body as BatchReconcileRequest
+
+      if (matches.length === 0) {
+        return NextResponse.json(
+          { error: 'matches[] must contain at least one item' },
+          { status: 400 }
+        )
+      }
+
+      if (dryRun) {
+        const resp: BatchReconcileResponse = {
+          total: matches.length,
+          succeeded: matches.length,
+          failed: 0,
+          results: matches.map((m) => ({
+            invoiceNumber: m.invoiceNumber,
+            success: true,
+            message: `Dry run: would create bank transfer for $${m.amount.toFixed(2)} (${m.invoiceNumber})`,
+          })),
+          dryRun: true,
+        }
+        return NextResponse.json(resp)
+      }
+
+      const result = await createBatchBankTransfers(
+        matches.map((m) => ({
+          clearingTransactionId: m.clearingTransactionId,
+          amount: m.amount,
+          date: m.date,
+          reference: m.reference ?? m.invoiceNumber,
+        }))
+      )
+
+      console.log(
+        `[AUDIT] batch-reconcile by ${auth.user} at ${new Date().toISOString()} — items=${matches.length} succeeded=${result.succeeded} failed=${result.failed}`
+      )
+
+      const resp: BatchReconcileResponse = {
+        total: result.total,
+        succeeded: result.succeeded,
+        failed: result.failed,
+        results: result.results.map((r) => ({
+          invoiceNumber: matches.find((m) => (m.reference ?? m.invoiceNumber) === r.reference)?.invoiceNumber ?? r.reference,
+          success: r.success,
+          message: r.message,
+          transferId: r.transferId,
+        })),
+        dryRun: false,
+      }
+      return NextResponse.json(resp)
+    }
+
+    // ── Legacy single-item mode ──
+    const {
+      bankTransactionId,
+      clearingTransactionIds,
+      dryRun,
+      feeAmount,
+      feeAccountCode,
+    } = body as ClearingApplyRequest
 
     if (!bankTransactionId || !Array.isArray(clearingTransactionIds) || clearingTransactionIds.length === 0) {
       return NextResponse.json(

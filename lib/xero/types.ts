@@ -67,6 +67,14 @@ export interface ClearingTransaction {
   amount: number
   invoiceNumber: string
   reference: string
+  /** Contact name from Xero (patient name when Halaxy synced) */
+  contactName?: string
+  // Halaxy enrichment (optional — populated when Halaxy is configured)
+  halaxyInvoiceNumber?: string
+  halaxyPatientName?: string
+  halaxyPaymentMethod?: string
+  halaxyAmount?: number
+  halaxyMatchType?: 'exact' | 'amount-only' | 'missing'
 }
 
 export type MatchConfidence = 'exact' | 'fee-adjusted' | 'uncertain'
@@ -92,6 +100,22 @@ export interface ClearingSummaryResponse {
   deposits: DepositMatch[]
   unmatchedDeposits: BankDeposit[]
   unmatchedClearing: ClearingTransaction[]
+  /** Whether Halaxy enrichment was applied */
+  halaxyEnriched?: boolean
+  /** Sync gaps between Halaxy and Xero (only present when halaxyEnriched) */
+  syncGaps?: {
+    /** Payments in Halaxy with no matching Xero clearing transaction */
+    missingFromXero: Array<{
+      id: string
+      created: string
+      amount: number
+      method: string
+      invoiceNumber?: string
+      patientName?: string
+    }>
+    /** Xero clearing transaction IDs with no matching Halaxy payment */
+    notFromHalaxy: ClearingTransaction[]
+  }
 }
 
 export interface ClearingApplyRequest {
@@ -260,6 +284,82 @@ export interface InvoiceCleanupVerifyResponse {
     expected?: string
     ok: boolean // true if status matches expected
   }>
+}
+
+// ── Three-way reconciliation types ──
+
+export type ThreeWayMatchStatus =
+  | 'matched'           // All three systems aligned — ready to reconcile
+  | 'awaiting_deposit'  // Clearing entry exists but NAB deposit not yet received
+  | 'sync_failed'       // Halaxy payment exists but no clearing entry in Xero
+  | 'manual_entry'      // Clearing entry exists but no matching Halaxy payment
+  | 'orphan_deposit'    // NAB deposit with no matching clearing entry
+
+export type ThreeWayMatchMethod = 'invoice_number' | 'amount_date' | 'unmatched'
+
+export interface ThreeWayMatch {
+  halaxyPayment: {
+    id: string
+    created: string
+    method: string
+    type: string
+    amount: number
+    invoiceId: string
+    invoiceNumber?: string
+    patientName?: string
+  } | null
+  clearingTxn: ClearingTransaction | null
+  bankDeposit: BankDeposit | null
+  invoiceNumber: string
+  patientName: string
+  amount: number
+  date: string
+  status: ThreeWayMatchStatus
+  matchMethod: ThreeWayMatchMethod
+  /** Calculated fee: amount × 0.019 + 1.00 (Bronze tier, informational only) */
+  calculatedFee?: number
+}
+
+export interface ReconciliationResult {
+  matches: ThreeWayMatch[]
+  stats: {
+    total: number
+    matched: number
+    awaitingDeposit: number
+    syncFailed: number
+    manualEntry: number
+    orphanDeposits: number
+    totalAmount: number
+    readyAmount: number
+  }
+  clearingBalance: number
+  expectedBalance: number
+  /** Whether this used three-way matching (true) or legacy subset-sum (false) */
+  threeWayMode: boolean
+}
+
+export interface BatchReconcileRequest {
+  matches: Array<{
+    invoiceNumber: string
+    clearingTransactionId: string
+    amount: number
+    date: string
+    reference?: string
+  }>
+  dryRun: boolean
+}
+
+export interface BatchReconcileResponse {
+  total: number
+  succeeded: number
+  failed: number
+  results: Array<{
+    invoiceNumber: string
+    success: boolean
+    message: string
+    transferId?: string
+  }>
+  dryRun: boolean
 }
 
 // ── Audit log ──

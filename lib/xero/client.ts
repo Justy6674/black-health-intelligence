@@ -1,4 +1,9 @@
-import type { VoidResult, BankDeposit, ClearingTransaction, DepositMatch, MatchConfidence, XeroInvoiceSummary, BulkDeleteResult } from './types'
+import type {
+  VoidResult, BankDeposit, ClearingTransaction, DepositMatch,
+  MatchConfidence, XeroInvoiceSummary, BulkDeleteResult,
+  ThreeWayMatch, ThreeWayMatchStatus, ReconciliationResult,
+} from './types'
+import type { HalaxyPayment } from '@/lib/halaxy/types'
 
 // ── Environment ──
 
@@ -829,6 +834,7 @@ export async function getUnreconciledBankTransactions(
 
 /**
  * Fetch clearing‑account transactions for a period.
+ * Returns Contact name when available (for patient identification).
  */
 export async function getClearingTransactions(
   clearingAccountId: string,
@@ -846,13 +852,17 @@ export async function getClearingTransactions(
   const data = await res.json()
   const txns: Array<Record<string, unknown>> = data.BankTransactions ?? []
 
-  return txns.map((t) => ({
-    transactionId: t.BankTransactionID as string,
-    date: (t.Date as string).slice(0, 10),
-    amount: Number(t.Total ?? 0),
-    invoiceNumber: (t.Reference as string) ?? '',
-    reference: (t.Reference as string) ?? '',
-  }))
+  return txns.map((t) => {
+    const contact = t.Contact as Record<string, unknown> | undefined
+    return {
+      transactionId: t.BankTransactionID as string,
+      date: parseXeroDate(t.Date),
+      amount: Number(t.Total ?? 0),
+      invoiceNumber: (t.Reference as string) ?? '',
+      reference: (t.Reference as string) ?? '',
+      contactName: (contact?.Name as string) ?? undefined,
+    }
+  })
 }
 
 /**
@@ -1122,6 +1132,353 @@ export async function applyClearing(
   parts.push(`covering ${clearingTransactionIds.length} clearing transaction(s)`)
 
   return { success: true, message: parts.join('; ') }
+}
+
+// ── Three-way reconciliation engine ──
+
+/** Bronze tier fee calculation: 1.90% + $1.00 (incl. GST) */
+function calculateBronzeFee(amount: number): number {
+  return Math.round((amount * 0.019 + 1.0) * 100) / 100
+}
+
+/**
+ * Three-way matching: Halaxy payments ↔ Xero clearing transactions ↔ NAB bank deposits.
+ *
+ * Since the user is on Separate Transactions with fees to credit card:
+ * - Every Halaxy payment = 1 clearing entry = 1 NAB deposit of the exact same amount
+ * - No subset-sum needed — just 1:1:1 matching by invoice number
+ */
+export function reconcileThreeWay(
+  halaxyPayments: HalaxyPayment[],
+  clearingTxns: ClearingTransaction[],
+  bankDeposits: BankDeposit[]
+): ReconciliationResult {
+  const matches: ThreeWayMatch[] = []
+  const usedClearing = new Set<string>()
+  const usedDeposits = new Set<string>()
+  const usedHalaxy = new Set<string>()
+
+  // Index clearing transactions by invoice number (reference field)
+  const clearingByRef = new Map<string, ClearingTransaction[]>()
+  for (const txn of clearingTxns) {
+    const ref = (txn.reference || txn.invoiceNumber || '').toUpperCase().trim()
+    if (ref) {
+      const list = clearingByRef.get(ref) ?? []
+      list.push(txn)
+      clearingByRef.set(ref, list)
+    }
+  }
+
+  // Index bank deposits by amount (cents) for matching
+  const depositsByAmount = new Map<number, BankDeposit[]>()
+  for (const dep of bankDeposits) {
+    const cents = Math.round(dep.amount * 100)
+    const list = depositsByAmount.get(cents) ?? []
+    list.push(dep)
+    depositsByAmount.set(cents, list)
+  }
+
+  // Phase 1: Match starting from Halaxy payments (the source of truth)
+  const braintreePayments = halaxyPayments.filter(
+    (p) => p.method === 'Braintree' && p.type === 'Payment'
+  )
+
+  for (const payment of braintreePayments) {
+    if (usedHalaxy.has(payment.id)) continue
+
+    const invoiceNum = (payment.invoiceNumber ?? '').toUpperCase().trim()
+    const amountCents = Math.round(payment.amount * 100)
+
+    // Find matching clearing transaction by invoice number
+    let clearingMatch: ClearingTransaction | null = null
+    if (invoiceNum) {
+      const candidates = clearingByRef.get(invoiceNum) ?? []
+      clearingMatch = candidates.find((c) => !usedClearing.has(c.transactionId)) ?? null
+    }
+
+    // Fallback: match clearing by amount + date (±1 day)
+    if (!clearingMatch) {
+      const paymentDate = payment.created.slice(0, 10)
+      for (const txn of clearingTxns) {
+        if (usedClearing.has(txn.transactionId)) continue
+        if (Math.round(txn.amount * 100) !== amountCents) continue
+        const dayDiff = Math.abs(
+          new Date(txn.date).getTime() - new Date(paymentDate).getTime()
+        ) / (1000 * 60 * 60 * 24)
+        if (dayDiff <= 1) {
+          clearingMatch = txn
+          break
+        }
+      }
+    }
+
+    // Find matching NAB deposit by amount + date (±2 days for settlement lag)
+    let depositMatch: BankDeposit | null = null
+    const depositCandidates = depositsByAmount.get(amountCents) ?? []
+    const refDate = clearingMatch?.date ?? payment.created.slice(0, 10)
+
+    for (const dep of depositCandidates) {
+      if (usedDeposits.has(dep.bankTransactionId)) continue
+      const dayDiff = Math.abs(
+        new Date(dep.date).getTime() - new Date(refDate).getTime()
+      ) / (1000 * 60 * 60 * 24)
+      if (dayDiff <= 2) {
+        depositMatch = dep
+        break
+      }
+    }
+
+    // Determine status
+    let status: ThreeWayMatchStatus
+    if (clearingMatch && depositMatch) {
+      status = 'matched'
+    } else if (clearingMatch && !depositMatch) {
+      status = 'awaiting_deposit'
+    } else {
+      status = 'sync_failed'
+    }
+
+    const matchMethod = invoiceNum && clearingMatch
+      ? 'invoice_number' as const
+      : clearingMatch
+        ? 'amount_date' as const
+        : 'unmatched' as const
+
+    usedHalaxy.add(payment.id)
+    if (clearingMatch) usedClearing.add(clearingMatch.transactionId)
+    if (depositMatch) usedDeposits.add(depositMatch.bankTransactionId)
+
+    matches.push({
+      halaxyPayment: {
+        id: payment.id,
+        created: payment.created,
+        method: payment.method,
+        type: payment.type,
+        amount: payment.amount,
+        invoiceId: payment.invoiceId,
+        invoiceNumber: payment.invoiceNumber,
+        patientName: payment.patientName,
+      },
+      clearingTxn: clearingMatch,
+      bankDeposit: depositMatch,
+      invoiceNumber: payment.invoiceNumber ?? clearingMatch?.invoiceNumber ?? '',
+      patientName: payment.patientName ?? clearingMatch?.contactName ?? '',
+      amount: payment.amount,
+      date: payment.created.slice(0, 10),
+      status,
+      matchMethod,
+      calculatedFee: calculateBronzeFee(payment.amount),
+    })
+  }
+
+  // Phase 2: Unmatched clearing transactions (no Halaxy payment — manual entries)
+  for (const txn of clearingTxns) {
+    if (usedClearing.has(txn.transactionId)) continue
+    usedClearing.add(txn.transactionId)
+
+    const amountCents = Math.round(txn.amount * 100)
+    let depositMatch: BankDeposit | null = null
+    const depositCandidates = depositsByAmount.get(amountCents) ?? []
+    for (const dep of depositCandidates) {
+      if (usedDeposits.has(dep.bankTransactionId)) continue
+      const dayDiff = Math.abs(
+        new Date(dep.date).getTime() - new Date(txn.date).getTime()
+      ) / (1000 * 60 * 60 * 24)
+      if (dayDiff <= 2) {
+        depositMatch = dep
+        break
+      }
+    }
+    if (depositMatch) usedDeposits.add(depositMatch.bankTransactionId)
+
+    matches.push({
+      halaxyPayment: null,
+      clearingTxn: txn,
+      bankDeposit: depositMatch,
+      invoiceNumber: txn.invoiceNumber || txn.reference,
+      patientName: txn.contactName ?? '',
+      amount: txn.amount,
+      date: txn.date,
+      status: 'manual_entry',
+      matchMethod: 'unmatched',
+      calculatedFee: calculateBronzeFee(txn.amount),
+    })
+  }
+
+  // Phase 3: Orphan NAB deposits (no clearing match)
+  for (const dep of bankDeposits) {
+    if (usedDeposits.has(dep.bankTransactionId)) continue
+    usedDeposits.add(dep.bankTransactionId)
+
+    matches.push({
+      halaxyPayment: null,
+      clearingTxn: null,
+      bankDeposit: dep,
+      invoiceNumber: dep.reference || '',
+      patientName: '',
+      amount: dep.amount,
+      date: dep.date,
+      status: 'orphan_deposit',
+      matchMethod: 'unmatched',
+    })
+  }
+
+  // Sort: matched first, then by date descending
+  const statusOrder: Record<ThreeWayMatchStatus, number> = {
+    matched: 0,
+    awaiting_deposit: 1,
+    sync_failed: 2,
+    manual_entry: 3,
+    orphan_deposit: 4,
+  }
+  matches.sort((a, b) => {
+    const so = statusOrder[a.status] - statusOrder[b.status]
+    if (so !== 0) return so
+    return b.date.localeCompare(a.date)
+  })
+
+  // Calculate stats
+  const stats = {
+    total: matches.length,
+    matched: matches.filter((m) => m.status === 'matched').length,
+    awaitingDeposit: matches.filter((m) => m.status === 'awaiting_deposit').length,
+    syncFailed: matches.filter((m) => m.status === 'sync_failed').length,
+    manualEntry: matches.filter((m) => m.status === 'manual_entry').length,
+    orphanDeposits: matches.filter((m) => m.status === 'orphan_deposit').length,
+    totalAmount: matches.reduce((s, m) => s + m.amount, 0),
+    readyAmount: matches
+      .filter((m) => m.status === 'matched')
+      .reduce((s, m) => s + m.amount, 0),
+  }
+
+  // Clearing balance = sum of all clearing transactions
+  const clearingBalance = clearingTxns.reduce((s, t) => s + t.amount, 0)
+  // Expected balance after reconciling all matched items
+  const expectedBalance = clearingBalance - stats.readyAmount
+
+  return {
+    matches,
+    stats,
+    clearingBalance: Math.round(clearingBalance * 100) / 100,
+    expectedBalance: Math.round(expectedBalance * 100) / 100,
+    threeWayMode: true,
+  }
+}
+
+/**
+ * Create a bank transfer from clearing account to NAB for a single reconciliation item.
+ */
+export async function createBankTransfer(params: {
+  clearingAccountId: string
+  nabAccountId: string
+  amount: number
+  date: string
+  reference: string
+}): Promise<{ success: boolean; message: string; transferId?: string }> {
+  const headers = await xeroHeaders()
+
+  const body = {
+    FromBankAccount: { AccountID: params.clearingAccountId },
+    ToBankAccount: { AccountID: params.nabAccountId },
+    Amount: params.amount.toFixed(2),
+    Date: params.date,
+    Reference: params.reference,
+  }
+
+  const res = await fetch(`${XERO_API_BASE}/BankTransfers`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    return {
+      success: false,
+      message: `Bank transfer failed (${res.status}): ${errText.slice(0, 300)}`,
+    }
+  }
+
+  const data = await res.json()
+  const transfer = data.BankTransfers?.[0]
+  if (transfer?.HasErrors) {
+    const msgs = ((transfer.ValidationErrors as Array<{ Message: string }>) ?? [])
+      .map((e: { Message: string }) => e.Message)
+      .join('; ')
+    return { success: false, message: msgs || 'Validation error creating bank transfer' }
+  }
+
+  return {
+    success: true,
+    message: `Bank transfer created: $${params.amount.toFixed(2)} (${params.reference})`,
+    transferId: transfer?.BankTransferID as string | undefined,
+  }
+}
+
+/**
+ * Batch-create bank transfers for multiple reconciliation matches.
+ * Rate-limits between batches to stay within Xero limits.
+ */
+export async function createBatchBankTransfers(
+  items: Array<{
+    clearingTransactionId: string
+    amount: number
+    date: string
+    reference: string
+  }>
+): Promise<{
+  total: number
+  succeeded: number
+  failed: number
+  results: Array<{ reference: string; success: boolean; message: string; transferId?: string }>
+}> {
+  const clearingAccountId = process.env.XERO_CLEARING_ACCOUNT_ID
+  const nabAccountId = process.env.XERO_NAB_ACCOUNT_ID
+
+  if (!clearingAccountId || !nabAccountId) {
+    return {
+      total: items.length,
+      succeeded: 0,
+      failed: items.length,
+      results: items.map((item) => ({
+        reference: item.reference,
+        success: false,
+        message: 'XERO_NAB_ACCOUNT_ID and XERO_CLEARING_ACCOUNT_ID env vars are required',
+      })),
+    }
+  }
+
+  const results: Array<{ reference: string; success: boolean; message: string; transferId?: string }> = []
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    const result = await createBankTransfer({
+      clearingAccountId,
+      nabAccountId,
+      amount: item.amount,
+      date: item.date,
+      reference: item.reference,
+    })
+
+    results.push({
+      reference: item.reference,
+      success: result.success,
+      message: result.message,
+      transferId: result.transferId,
+    })
+
+    // Rate limit between transfers
+    if (i < items.length - 1) {
+      await sleep(BATCH_DELAY_MS)
+    }
+  }
+
+  return {
+    total: items.length,
+    succeeded: results.filter((r) => r.success).length,
+    failed: results.filter((r) => !r.success).length,
+    results,
+  }
 }
 
 // ── Feature 3: Bulk delete / void invoices before a cutoff date ──
