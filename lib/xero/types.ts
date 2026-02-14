@@ -166,11 +166,19 @@ export interface BulkDeleteAuditEntry {
 
 export type InvoiceCleanupInputMode = 'csv' | 'fetch'
 
+export type InvoiceCleanupStep = 'unpay' | 'void' | 'delete' | 'all'
+
 export interface InvoiceCleanupRequest {
   inputMode: InvoiceCleanupInputMode
   cutoffDate?: string // for fetch mode
   invoiceNumbers?: string[] // for csv mode
   dryRun: boolean
+  /** Run only this step; omit or 'all' = current behaviour */
+  step?: InvoiceCleanupStep
+  /** Re-fetch from Xero and return current status; no mutations */
+  verifyOnly?: boolean
+  /** For verifyOnly: expected status per invoice to compare (e.g. AUTHORISED after un-pay) */
+  expectedByInvoice?: Record<string, string>
 }
 
 export type InvoiceCleanupAction = 'DELETE' | 'VOID' | 'UNPAY_VOID' | 'SKIP'
@@ -182,6 +190,14 @@ export interface InvoiceCleanupItem {
   total: number
   status: string
   action: InvoiceCleanupAction
+}
+
+/** Per-invoice result for staged flow and "What's left" */
+export interface InvoiceCleanupResultItem {
+  invoiceNumber: string
+  action: InvoiceCleanupAction
+  success: boolean
+  message?: string
 }
 
 export interface InvoiceCleanupResponse {
@@ -199,6 +215,18 @@ export interface InvoiceCleanupResponse {
   dryRun: boolean
   stoppedEarly?: boolean
   user?: string
+  /** Per-invoice success/fail for staged flow and Retry failed only */
+  results?: InvoiceCleanupResultItem[]
+}
+
+/** Verify endpoint: current status from Xero for given invoice numbers */
+export interface InvoiceCleanupVerifyResponse {
+  verified: Array<{
+    invoiceNumber: string
+    status: string // PAID | AUTHORISED | VOIDED | not found
+    expected?: string
+    ok: boolean // true if status matches expected
+  }>
 }
 
 // ── Audit log ──

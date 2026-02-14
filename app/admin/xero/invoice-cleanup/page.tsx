@@ -7,6 +7,8 @@ import type {
   InvoiceCleanupItem,
   InvoiceCleanupInputMode,
   InvoiceCleanupAction,
+  InvoiceCleanupResultItem,
+  InvoiceCleanupVerifyResponse,
   ParsedInvoice,
 } from '@/lib/xero/types'
 
@@ -154,6 +156,11 @@ export default function InvoiceCleanupPage() {
   const [auditHistory, setAuditHistory] = useState<AuditEntry[]>([])
   const [showConfirmModal, setShowConfirmModal] = useState(false)
 
+  /** Execution mode: all at once vs staged (recommended) */
+  const [executionMode, setExecutionMode] = useState<'all' | 'staged'>('staged')
+  const [verifyResult, setVerifyResult] = useState<InvoiceCleanupVerifyResponse | null>(null)
+  const [lastStageRun, setLastStageRun] = useState<'unpay' | 'void' | 'delete' | null>(null)
+
   const [xeroStatus, setXeroStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [xeroOrgName, setXeroOrgName] = useState<string | null>(null)
   const [xeroError, setXeroError] = useState<string | null>(null)
@@ -212,6 +219,8 @@ export default function InvoiceCleanupPage() {
     setHasDryRunThisSession(false)
     setConfirmationPhrase('')
     setShowConfirmModal(false)
+    setVerifyResult(null)
+    setLastStageRun(null)
 
     try {
       const body =
@@ -299,6 +308,101 @@ export default function InvoiceCleanupPage() {
     [inputMode, cutoffDate, invoices, hasDryRunThisSession, phraseMatches, requiredPhrase]
   )
 
+  /** Execute a single stage (unpay, void, delete). Pass invoiceNumbers for retry failed only. */
+  const executeStage = useCallback(
+    async (stage: 'unpay' | 'void' | 'delete', retryNumbers?: string[]) => {
+      const nums =
+        stage === 'unpay'
+          ? invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber)
+          : stage === 'void'
+            ? [...invoices.filter((i) => i.action === 'VOID').map((i) => i.invoiceNumber), ...invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber)]
+            : invoices.filter((i) => i.action === 'DELETE').map((i) => i.invoiceNumber)
+      const actualNums = retryNumbers && retryNumbers.length > 0 ? retryNumbers : nums
+      if (actualNums.length === 0) return
+      setLoading(true)
+      setError('')
+      setVerifyResult(null)
+      setLastStageRun(stage)
+      try {
+        const body =
+          inputMode === 'fetch' && !retryNumbers?.length
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: stage }
+            : { inputMode: 'csv' as const, invoiceNumbers: actualNums, dryRun: false, step: stage }
+        const res = await fetch('/api/xero/invoice-cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: InvoiceCleanupResponse = await res.json()
+        setResult(data)
+        if (data.user) {
+          saveAuditEntry({
+            timestamp: new Date().toISOString(),
+            user: data.user,
+            inputMode,
+            cutoffDate: data.cutoffDate,
+            total: data.invoices.length,
+            deleted: data.deleted,
+            voided: data.voided,
+            paymentsRemoved: data.paymentsRemoved,
+            failed: data.errors.length,
+          })
+          setAuditHistory(loadAuditHistory())
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [inputMode, cutoffDate, invoices]
+  )
+
+  /** Verify current status in Xero for given invoice numbers */
+  const verifyInXero = useCallback(
+    async (invoiceNumbers: string[], expectedByInvoice?: Record<string, string>) => {
+      setLoading(true)
+      setError('')
+      try {
+        const res = await fetch('/api/xero/invoice-cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inputMode: 'csv' as const,
+            invoiceNumbers,
+            dryRun: true,
+            verifyOnly: true,
+            expectedByInvoice,
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: InvoiceCleanupVerifyResponse = await res.json()
+        setVerifyResult(data)
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
+  /** Failed invoice numbers from last result by action */
+  const failedByAction = (action: InvoiceCleanupAction): string[] => {
+    if (!result?.results) return []
+    return result.results.filter((r) => r.action === action && !r.success).map((r) => r.invoiceNumber)
+  }
+  const failedUnpay = failedByAction('UNPAY_VOID')
+  const failedVoid = failedByAction('VOID')
+  const failedDelete = failedByAction('DELETE')
+
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -326,7 +430,16 @@ export default function InvoiceCleanupPage() {
       : csvInvoiceNumbers.length > 0
 
   return (
-    <div>
+    <div className="relative">
+      {loading && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/70">
+          <div className="w-10 h-10 border-2 border-slate-blue border-t-transparent rounded-full animate-spin" />
+          <p className="mt-4 text-white font-medium">Processing…</p>
+          <p className="mt-1 text-sm text-silver-400">
+            Un-paying and voiding can take several minutes. Do not close this page.
+          </p>
+        </div>
+      )}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link href="/admin" className="text-silver-400 hover:text-white transition-colors">
           ← Back
@@ -447,6 +560,9 @@ export default function InvoiceCleanupPage() {
           <h2 className="text-lg font-semibold text-white mb-3">
             Step 2 — Preview ({invoices.length} invoices)
           </h2>
+          <p className="text-silver-400 text-xs mb-3">
+            Status = current state in Xero. Action = what we will do.
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
             <div className="p-3 bg-charcoal/50 rounded border border-silver-700/30">
               <div className="text-silver-400 text-xs">To Delete</div>
@@ -513,33 +629,217 @@ export default function InvoiceCleanupPage() {
       {invoices.length > 0 && actionableCount > 0 && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">Step 3 — Execute</h2>
-          {hasDryRunThisSession && (
-            <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
-              <p className="text-sm text-amber-200 mb-2">Type this exactly to run cleanup:</p>
-              <code className="block text-xs text-white mb-2 font-mono break-all">
-                {requiredPhrase}
-              </code>
+          <div className="flex gap-4 mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
-                type="text"
-                value={confirmationPhrase}
-                onChange={(e) => setConfirmationPhrase(e.target.value)}
-                placeholder="Paste or type the phrase above"
-                className="w-full px-3 py-2 bg-charcoal border border-silver-600 rounded text-white text-sm font-mono"
+                type="radio"
+                name="executionMode"
+                checked={executionMode === 'staged'}
+                onChange={() => {
+                  setExecutionMode('staged')
+                  setVerifyResult(null)
+                  setLastStageRun(null)
+                }}
+                className="text-slate-blue"
               />
-            </div>
-          )}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowConfirmModal(true)}
-              disabled={loading || !hasDryRunThisSession || !phraseMatches}
-              className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 text-sm font-bold"
-            >
-              🗑️ Run Cleanup ({actionableCount} invoices)
-            </button>
+              <span className="text-sm text-silver-300">Staged (recommended)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="executionMode"
+                checked={executionMode === 'all'}
+                onChange={() => {
+                  setExecutionMode('all')
+                  setVerifyResult(null)
+                  setLastStageRun(null)
+                }}
+                className="text-slate-blue"
+              />
+              <span className="text-sm text-silver-300">All at once</span>
+            </label>
           </div>
-          <p className="mt-2 text-sm text-silver-400">
-            Load & Preview above acts as the dry run. Type the phrase to enable execution.
-          </p>
+
+          {executionMode === 'staged' ? (
+            <div className="space-y-6">
+              {hasDryRunThisSession && (
+                <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
+                  <p className="text-sm text-amber-200 mb-2">Type this exactly to run any stage:</p>
+                  <code className="block text-xs text-white mb-2 font-mono break-all">
+                    {requiredPhrase}
+                  </code>
+                  <input
+                    type="text"
+                    value={confirmationPhrase}
+                    onChange={(e) => setConfirmationPhrase(e.target.value)}
+                    placeholder="Paste or type the phrase above"
+                    className="w-full px-3 py-2 bg-charcoal border border-silver-600 rounded text-white text-sm font-mono"
+                  />
+                </div>
+              )}
+
+              {/* Stage 1: Un-pay */}
+              {toUnpayVoid > 0 && (
+                <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
+                  <h3 className="text-base font-semibold text-white mb-2">Stage 1: Un-pay PAID</h3>
+                  <p className="text-silver-400 text-sm mb-2">
+                    Removes payments from {toUnpayVoid} PAID invoice(s). They become AUTHORISED.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => executeStage('unpay')}
+                      disabled={loading || !hasDryRunThisSession || !phraseMatches}
+                      className="px-4 py-2 bg-red-700/80 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      Run Stage 1: Un-pay only
+                    </button>
+                    {result && lastStageRun === 'unpay' && (
+                      <>
+                        <button
+                          onClick={() =>
+                            verifyInXero(
+                              invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber),
+                              Object.fromEntries(invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => [i.invoiceNumber, 'AUTHORISED']))
+                            )
+                          }
+                          disabled={loading}
+                          className="px-4 py-2 bg-slate-blue/30 text-white rounded hover:bg-slate-blue/50 transition-colors disabled:opacity-50 text-sm"
+                        >
+                          Verify in Xero
+                        </button>
+                        {failedUnpay.length > 0 && (
+                          <button
+                            onClick={() => executeStage('unpay', failedUnpay)}
+                            disabled={loading || !phraseMatches}
+                            className="px-4 py-2 bg-amber-700/60 text-white rounded hover:bg-amber-600 transition-colors disabled:opacity-50 text-sm"
+                          >
+                            Retry Un-pay ({failedUnpay.length} failed)
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Stage 2: Void */}
+              {(toVoid > 0 || toUnpayVoid > 0) && (
+                <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
+                  <h3 className="text-base font-semibold text-white mb-2">Stage 2: Void</h3>
+                  <p className="text-silver-400 text-sm mb-2">
+                    Voids AUTHORISED invoices ({toVoid + toUnpayVoid} total from preview). Run Stage 1 first if you have PAID invoices.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => executeStage('void')}
+                      disabled={loading || !hasDryRunThisSession || !phraseMatches}
+                      className="px-4 py-2 bg-blue-700/80 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      Run Stage 2: Void
+                    </button>
+                    {result && lastStageRun === 'void' && (
+                      <>
+                        <button
+                          onClick={() => {
+                            const nums = [
+                              ...invoices.filter((i) => i.action === 'VOID').map((i) => i.invoiceNumber),
+                              ...invoices.filter((i) => i.action === 'UNPAY_VOID').map((i) => i.invoiceNumber),
+                            ]
+                            verifyInXero(nums, Object.fromEntries(nums.map((n) => [n, 'VOIDED'])))
+                          }}
+                          disabled={loading}
+                          className="px-4 py-2 bg-slate-blue/30 text-white rounded hover:bg-slate-blue/50 transition-colors disabled:opacity-50 text-sm"
+                        >
+                          Verify in Xero
+                        </button>
+                        {failedVoid.length > 0 && (
+                          <button
+                            onClick={() => executeStage('void', failedVoid)}
+                            disabled={loading || !phraseMatches}
+                            className="px-4 py-2 bg-amber-700/60 text-white rounded hover:bg-amber-600 transition-colors disabled:opacity-50 text-sm"
+                          >
+                            Retry Void ({failedVoid.length} failed)
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Stage 3: Delete */}
+              {toDelete > 0 && (
+                <div className="p-4 bg-charcoal/50 rounded border border-silver-700/30">
+                  <h3 className="text-base font-semibold text-white mb-2">Stage 3: Delete</h3>
+                  <p className="text-silver-400 text-sm mb-2">
+                    Deletes {toDelete} DRAFT/SUBMITTED invoice(s). Permanently removed.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => executeStage('delete')}
+                      disabled={loading || !hasDryRunThisSession || !phraseMatches}
+                      className="px-4 py-2 bg-amber-700/80 text-white rounded hover:bg-amber-600 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      Run Stage 3: Delete
+                    </button>
+                    {result && lastStageRun === 'delete' && (
+                      <>
+                        <button
+                          onClick={() => {
+                            const nums = invoices.filter((i) => i.action === 'DELETE').map((i) => i.invoiceNumber)
+                            verifyInXero(nums, Object.fromEntries(nums.map((n) => [n, 'not found'])))
+                          }}
+                          disabled={loading}
+                          className="px-4 py-2 bg-slate-blue/30 text-white rounded hover:bg-slate-blue/50 transition-colors disabled:opacity-50 text-sm"
+                        >
+                          Verify in Xero
+                        </button>
+                        {failedDelete.length > 0 && (
+                          <button
+                            onClick={() => executeStage('delete', failedDelete)}
+                            disabled={loading || !phraseMatches}
+                            className="px-4 py-2 bg-amber-700/60 text-white rounded hover:bg-amber-600 transition-colors disabled:opacity-50 text-sm"
+                          >
+                            Retry Delete ({failedDelete.length} failed)
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {hasDryRunThisSession && (
+                <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
+                  <p className="text-sm text-amber-200 mb-2">Type this exactly to run cleanup:</p>
+                  <code className="block text-xs text-white mb-2 font-mono break-all">
+                    {requiredPhrase}
+                  </code>
+                  <input
+                    type="text"
+                    value={confirmationPhrase}
+                    onChange={(e) => setConfirmationPhrase(e.target.value)}
+                    placeholder="Paste or type the phrase above"
+                    className="w-full px-3 py-2 bg-charcoal border border-silver-600 rounded text-white text-sm font-mono"
+                  />
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirmModal(true)}
+                  disabled={loading || !hasDryRunThisSession || !phraseMatches}
+                  className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 text-sm font-bold"
+                >
+                  🗑️ Run Cleanup ({actionableCount} invoices)
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-silver-400">
+                Load & Preview above acts as the dry run. Type the phrase to enable execution.
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -598,9 +898,14 @@ export default function InvoiceCleanupPage() {
         <div className="card mb-6">
           <h2 className="text-lg font-semibold text-white mb-3">✅ Result</h2>
           {result.stoppedEarly && (
-            <p className="text-amber-400 text-sm mb-3">
-              ⚠️ Stopped early due to API error. Partial results below.
-            </p>
+            <div className="mb-4 p-4 bg-amber-900/20 border border-amber-600/30 rounded">
+              <p className="text-amber-400 text-sm font-medium mb-1">
+                ⚠️ Stopped early due to API error (e.g. rate limit). Partial results below.
+              </p>
+              <p className="text-silver-300 text-sm mt-2">
+                <strong>What next:</strong> Use &quot;Retry [stage] (N failed)&quot; or run again with the same input.
+              </p>
+            </div>
           )}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
             <div>
@@ -626,6 +931,11 @@ export default function InvoiceCleanupPage() {
           </div>
           {result.errors.length > 0 && (
             <div className="mt-3">
+              {result.errors.some((e) => e.message.includes('429')) && (
+                <p className="text-amber-400 text-xs mb-2">
+                  <strong>429</strong> = Xero rate limit. We now use slower requests. Run again to continue.
+                </p>
+              )}
               <h3 className="text-sm font-medium text-red-400 mb-2 flex items-center gap-2">
                 Errors:
                 <button
@@ -650,6 +960,89 @@ export default function InvoiceCleanupPage() {
               </div>
             </div>
           )}
+
+          {/* What's left: per-invoice results */}
+          {result.results && result.results.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-silver-700/30">
+              <h3 className="text-sm font-medium text-white mb-2">What&apos;s left</h3>
+              <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-silver-400 border-b border-silver-700/30">
+                    <tr>
+                      <th className="py-1.5 pr-4">Invoice #</th>
+                      <th className="py-1.5 pr-4">Action</th>
+                      <th className="py-1.5 pr-4">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-silver-200">
+                    {result.results.slice(0, MAX_DISPLAY_ROWS).map((r, i) => (
+                      <tr key={i} className="border-b border-silver-700/10">
+                        <td className="py-1 pr-4 font-mono text-xs">{r.invoiceNumber}</td>
+                        <td className="py-1 pr-4">
+                          <span className={`px-2 py-0.5 rounded text-xs ${actionColor(r.action)}`}>
+                            {actionLabel(r.action)}
+                          </span>
+                        </td>
+                        <td className="py-1 pr-4">
+                          {r.success ? (
+                            <span className="text-green-400">Success</span>
+                          ) : (
+                            <span className="text-red-400">Failed: {r.message ?? 'Unknown'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {result.results.length > MAX_DISPLAY_ROWS && (
+                  <p className="text-silver-500 text-xs mt-2">
+                    Showing first {MAX_DISPLAY_ROWS} of {result.results.length}
+                  </p>
+                )}
+              </div>
+              <p className="text-silver-400 text-xs mt-2">
+                Failed: {result.results.filter((r) => !r.success).length}. Use &quot;Retry [stage] (N failed)&quot; in the staged flow above.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Verify in Xero result */}
+      {verifyResult && verifyResult.verified.length > 0 && (
+        <div className="card mb-6">
+          <h2 className="text-lg font-semibold text-white mb-3">Verified in Xero</h2>
+          <div className="overflow-x-auto max-h-64 overflow-y-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-silver-400 border-b border-silver-700/30">
+                <tr>
+                  <th className="py-2 pr-4">Invoice #</th>
+                  <th className="py-2 pr-4">Status (from Xero)</th>
+                  <th className="py-2 pr-4">Expected</th>
+                  <th className="py-2 pr-4"></th>
+                </tr>
+              </thead>
+              <tbody className="text-silver-200">
+                {verifyResult.verified.map((v, i) => (
+                  <tr key={i} className="border-b border-silver-700/10">
+                    <td className="py-1.5 pr-4 font-mono text-xs">{v.invoiceNumber}</td>
+                    <td className="py-1.5 pr-4">{v.status}</td>
+                    <td className="py-1.5 pr-4">{v.expected ?? '—'}</td>
+                    <td className="py-1.5 pr-4">
+                      {v.ok ? (
+                        <span className="text-green-400">✓</span>
+                      ) : (
+                        <span className="text-red-400" title="Mismatch">✗</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-silver-400 text-xs mt-2">
+            {verifyResult.verified.filter((v) => v.ok).length} confirmed, {verifyResult.verified.filter((v) => !v.ok).length} mismatch
+          </p>
         </div>
       )}
 
