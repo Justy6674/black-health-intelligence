@@ -432,8 +432,8 @@ export default function InvoiceCleanupPage() {
         )
         const body =
           inputMode === 'fetch' && batchNum === 1
-            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: unpayFirst ? 6 : 20, includePaid, unpayFirstBeforeVoid: unpayFirst }
-            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: unpayFirst ? 6 : 20, includePaid, unpayFirstBeforeVoid: unpayFirst }
+            ? { inputMode: 'fetch' as const, cutoffDate, dryRun: false, step: 'void' as const, batchLimit: unpayFirst ? 4 : 20, includePaid, unpayFirstBeforeVoid: unpayFirst }
+            : { inputMode: 'csv' as const, invoiceNumbers: remaining, dryRun: false, step: 'void' as const, batchLimit: unpayFirst ? 4 : 20, includePaid, unpayFirstBeforeVoid: unpayFirst }
         const res = await fetch('/api/xero/invoice-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

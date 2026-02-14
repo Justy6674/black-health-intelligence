@@ -404,6 +404,7 @@ export interface InvoiceWithPayments {
   invoiceNumber: string
   status: string
   date: string
+  contactId?: string
   payments: Array<{ paymentId: string; amount: number; date: string }>
 }
 
@@ -419,18 +420,80 @@ export async function getInvoiceByNumber(invoiceNumber: string): Promise<Invoice
   const invoices: Array<Record<string, unknown>> = data.Invoices ?? []
   const inv = invoices[0]
   if (!inv) return null
+  const contact = inv.Contact as Record<string, unknown> | undefined
   const payments: Array<Record<string, unknown>> = (inv.Payments as Array<Record<string, unknown>>) ?? []
   return {
     invoiceId: inv.InvoiceID as string,
     invoiceNumber: (inv.InvoiceNumber as string) ?? '',
     status: (inv.Status as string) ?? '',
     date: parseXeroDate(inv.Date),
+    contactId: contact?.ContactID as string | undefined,
     payments: payments.map((p) => ({
       paymentId: p.PaymentID as string,
       amount: Number(p.Amount ?? 0),
       date: (p.Date as string) ?? '',
     })),
   }
+}
+
+/**
+ * Find credit note allocations that target a given invoice. Needed because void fails with
+ * "payments or credit notes allocated" — we must delete both payments AND credit note allocations.
+ * If contactId provided, filters to that contact's credit notes (much faster).
+ */
+export async function getCreditNoteAllocationsToInvoice(
+  invoiceId: string,
+  contactId?: string
+): Promise<Array<{ creditNoteId: string; allocationId: string }>> {
+  const headers = await xeroHeaders()
+  const result: Array<{ creditNoteId: string; allocationId: string }> = []
+  let page = 1
+  let hasMore = true
+  const where = contactId
+    ? `Status=="AUTHORISED" AND Contact.ContactID=guid("${contactId.replace(/"/g, '')}")`
+    : `Status=="AUTHORISED"`
+  const MAX_PAGES = 5
+  while (hasMore && page <= MAX_PAGES) {
+    const url = `${XERO_API_BASE}/CreditNotes?where=${encodeURIComponent(where)}&page=${page}`
+    const res = await fetch(url, { headers })
+    if (!res.ok) throw new Error(`Xero CreditNotes ${res.status}: ${await res.text()}`)
+    const data = await res.json()
+    const notes: Array<Record<string, unknown>> = data.CreditNotes ?? []
+    for (const cn of notes) {
+      const allocations: Array<Record<string, unknown>> = (cn.Allocations as Array<Record<string, unknown>>) ?? []
+      for (const a of allocations) {
+        const inv = a.Invoice as Record<string, unknown> | undefined
+        if (inv?.InvoiceID === invoiceId) {
+          result.push({
+            creditNoteId: cn.CreditNoteID as string,
+            allocationId: a.AllocationID as string,
+          })
+        }
+      }
+    }
+    hasMore = notes.length === 100
+    page++
+    if (hasMore) await sleep(300)
+  }
+  return result
+}
+
+/**
+ * Delete a credit note allocation. Required before voiding invoices that have credit notes allocated.
+ * DELETE /CreditNotes/{CreditNoteID}/Allocations/{AllocationID}
+ */
+export async function deleteCreditNoteAllocation(
+  creditNoteId: string,
+  allocationId: string
+): Promise<{ success: boolean; message: string }> {
+  const headers = await xeroHeaders()
+  const url = `${XERO_API_BASE}/CreditNotes/${creditNoteId}/Allocations/${allocationId}`
+  const res = await fetch(url, { method: 'DELETE', headers })
+  if (!res.ok) {
+    const text = await res.text()
+    return { success: false, message: `Xero API ${res.status}: ${text.slice(0, 300)}` }
+  }
+  return { success: true, message: 'Credit note allocation removed' }
 }
 
 /**

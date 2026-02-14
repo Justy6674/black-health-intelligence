@@ -7,6 +7,8 @@ import {
   bulkVoidInvoicesWithIds,
   getInvoiceByNumber,
   deletePayment,
+  getCreditNoteAllocationsToInvoice,
+  deleteCreditNoteAllocation,
 } from '@/lib/xero/client'
 import type {
   InvoiceCleanupRequest,
@@ -62,8 +64,8 @@ export async function POST(request: NextRequest) {
   try {
     const body: InvoiceCleanupRequest = await request.json()
     const { inputMode, cutoffDate, invoiceNumbers, dryRun, step, verifyOnly, batchLimit, includePaid, unpayFirstBeforeVoid } = body
-    // Un-pay is slow (get + delete per invoice + delays). Cap at 6 to stay under 60s server timeout.
-    const unpayBatchLimit = unpayFirstBeforeVoid ? Math.min(batchLimit ?? 6, 6) : (batchLimit ?? 20)
+    // Un-pay is slow (get + delete payments + credit note unallocate + delays). Cap at 4 to stay under 60s.
+    const unpayBatchLimit = unpayFirstBeforeVoid ? Math.min(batchLimit ?? 4, 4) : (batchLimit ?? 20)
     const includePaidInvoices = includePaid ?? (inputMode === 'fetch')
 
     // ── Verify only: re-fetch from Xero, return current status ──
@@ -179,16 +181,31 @@ export async function POST(request: NextRequest) {
         let ok = true
         const payments = inv.payments ?? []
         for (const p of payments) {
-          const result = await deletePayment(p.paymentId)
-          if (!result.success) {
-            errors.push({ invoiceNumber: item.invoiceNumber, message: `Payment removal failed: ${result.message}` })
-            results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: result.message })
+          const payResult = await deletePayment(p.paymentId)
+          if (!payResult.success) {
+            errors.push({ invoiceNumber: item.invoiceNumber, message: `Payment removal failed: ${payResult.message}` })
+            results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: payResult.message })
             stoppedEarly = true
             ok = false
             break
           }
           paymentsRemoved++
           await sleep(500)
+        }
+        if (ok) {
+          const cnAllocations = await getCreditNoteAllocationsToInvoice(inv.invoiceId, inv.contactId)
+          for (const { creditNoteId, allocationId } of cnAllocations) {
+            const cnResult = await deleteCreditNoteAllocation(creditNoteId, allocationId)
+            if (!cnResult.success) {
+              errors.push({ invoiceNumber: item.invoiceNumber, message: `Credit note unallocate failed: ${cnResult.message}` })
+              results.push({ invoiceNumber: item.invoiceNumber, action: 'UNPAY_VOID', success: false, message: cnResult.message })
+              stoppedEarly = true
+              ok = false
+              break
+            }
+            paymentsRemoved++
+            await sleep(500)
+          }
         }
         if (ok) {
           paidWipeVoidWithIds.push({ invoiceNumber: item.invoiceNumber, invoiceId: inv.invoiceId })
