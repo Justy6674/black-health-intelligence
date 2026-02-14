@@ -7,20 +7,34 @@ import {
 } from '@/lib/xero/client'
 import type { ClearingSummaryResponse } from '@/lib/xero/types'
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
   try {
     const { searchParams } = new URL(request.url)
-    const date = searchParams.get('date')
 
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // Support date range (fromDate/toDate) with single-date fallback
+    let fromDate = searchParams.get('fromDate')
+    let toDate = searchParams.get('toDate')
+    const singleDate = searchParams.get('date')
+
+    if (!fromDate && singleDate && DATE_RE.test(singleDate)) {
+      fromDate = singleDate
+      toDate = singleDate
+    }
+
+    if (!fromDate || !toDate || !DATE_RE.test(fromDate) || !DATE_RE.test(toDate)) {
       return NextResponse.json(
-        { error: 'date query param required in YYYY-MM-DD format' },
+        { error: 'fromDate and toDate (or date) query params required in YYYY-MM-DD format' },
         { status: 400 }
       )
     }
+
+    const toleranceParam = searchParams.get('tolerance')
+    const toleranceCents = toleranceParam ? Math.max(0, Math.round(Number(toleranceParam))) : 500
 
     const nabAccountId = process.env.XERO_NAB_ACCOUNT_ID
     const clearingAccountId = process.env.XERO_CLEARING_ACCOUNT_ID
@@ -32,18 +46,22 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch deposits and clearing transactions for the day
-    const deposits = await getUnreconciledBankTransactions(nabAccountId, date, date)
-    const clearingTxns = await getClearingTransactions(clearingAccountId, date, date)
+    // Fetch deposits and clearing transactions for the date range
+    const deposits = await getUnreconciledBankTransactions(nabAccountId, fromDate, toDate)
+    const clearingTxns = await getClearingTransactions(clearingAccountId, fromDate, toDate)
 
-    // Suggest groupings
+    // Suggest groupings with tolerance
     const { matches, unmatchedDeposits, unmatchedClearing } = suggestGroupings(
       deposits,
-      clearingTxns
+      clearingTxns,
+      toleranceCents
     )
 
     const resp: ClearingSummaryResponse = {
-      date,
+      date: fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`,
+      fromDate,
+      toDate,
+      toleranceCents,
       deposits: matches,
       unmatchedDeposits,
       unmatchedClearing,

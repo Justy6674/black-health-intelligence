@@ -69,16 +69,26 @@ export interface ClearingTransaction {
   reference: string
 }
 
+export type MatchConfidence = 'exact' | 'fee-adjusted' | 'uncertain'
+
 export interface DepositMatch {
   deposit: BankDeposit
   clearingTransactions: ClearingTransaction[]
   total: number
   difference: number
   isExactMatch: boolean
+  /** Absolute value of fee implied by the difference (0 for exact) */
+  impliedFee: number
+  /** How the match was found */
+  matchConfidence: MatchConfidence
 }
 
 export interface ClearingSummaryResponse {
   date: string
+  /** Date range used for the query */
+  fromDate?: string
+  toDate?: string
+  toleranceCents?: number
   deposits: DepositMatch[]
   unmatchedDeposits: BankDeposit[]
   unmatchedClearing: ClearingTransaction[]
@@ -88,6 +98,10 @@ export interface ClearingApplyRequest {
   bankTransactionId: string
   clearingTransactionIds: string[]
   dryRun: boolean
+  /** Fee to post as Spend Money transaction (absolute value) */
+  feeAmount?: number
+  /** Xero expense account code for merchant fees */
+  feeAccountCode?: string
 }
 
 export interface ClearingApplyResponse {
@@ -97,6 +111,13 @@ export interface ClearingApplyResponse {
   success: boolean
   message: string
   dryRun: boolean
+}
+
+export interface ClearingOptions {
+  /** Tolerance in cents for fee-adjusted matching (default 500 = $5.00) */
+  toleranceCents: number
+  /** Xero expense account code for merchant fees */
+  feeAccountCode?: string
 }
 
 // ── CSV parsing types ──
