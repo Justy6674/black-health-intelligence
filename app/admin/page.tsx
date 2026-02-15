@@ -124,6 +124,12 @@ export default async function AdminDashboard() {
                             <p className="text-sm text-silver-400">Match NAB deposits to Halaxy clearing-account payments for fast bank rec</p>
                         </div>
                     </Link>
+                    <Link href="/admin/xero/account-purge" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-amber-700/30">
+                            <h3 className="font-semibold text-white mb-1">🧹 Account Purge</h3>
+                            <p className="text-sm text-silver-400">Delete old payments &amp; bank transactions before a cutoff date (savings, clearing, NAB)</p>
+                        </div>
+                    </Link>
                     <Link href="/admin/xero/assistant" className="block">
                         <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-green-700/30">
                             <h3 className="font-semibold text-white mb-1">🤖 Xero AI Assistant</h3>
