@@ -5,6 +5,7 @@ import {
   getClearingTransactions,
   suggestGroupings,
   reconcileThreeWay,
+  reconcileMedicare,
 } from '@/lib/xero/client'
 import type {
   ClearingSummaryResponse,
@@ -19,6 +20,7 @@ import {
   getPaymentTransactions,
   enrichPaymentsWithInvoices,
   getBraintreePayments,
+  getMedicarePayments,
 } from '@/lib/halaxy/client'
 import type { HalaxyPayment } from '@/lib/halaxy/types'
 
@@ -264,6 +266,38 @@ export async function GET(request: NextRequest) {
       }
 
       return NextResponse.json(resp)
+    }
+
+    // ── Medicare mode: savings account batch reconciliation ──
+    if (modeParam === 'medicare') {
+      if (!halaxyConfigured) {
+        return NextResponse.json(
+          { error: 'Halaxy credentials not configured — Medicare mode requires Halaxy' },
+          { status: 400 }
+        )
+      }
+
+      const savingsAccountId = process.env.XERO_SAVINGS_ACCOUNT_ID
+      if (!savingsAccountId) {
+        return NextResponse.json(
+          { error: 'XERO_SAVINGS_ACCOUNT_ID env var is required for Medicare mode' },
+          { status: 500 }
+        )
+      }
+
+      const [savingsDeposits, clearingTxns, medicarePayments] = await Promise.all([
+        getUnreconciledBankTransactions(savingsAccountId, fromDate, toDate),
+        getClearingTransactions(clearingAccountId, fromDate, toDate),
+        getMedicarePayments(fromDate, toDate),
+      ])
+
+      const result: ReconciliationResult = reconcileMedicare(
+        medicarePayments,
+        clearingTxns,
+        savingsDeposits
+      )
+
+      return NextResponse.json(result)
     }
 
     // ── Three-way matching mode ──

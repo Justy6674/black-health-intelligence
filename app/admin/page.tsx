@@ -93,6 +93,20 @@ export default async function AdminDashboard() {
                 </div>
             </div>
 
+            {/* Halaxy */}
+            <div className="card mt-8">
+                <h2 className="text-xl font-bold text-white mb-2">Halaxy</h2>
+                <p className="text-sm text-silver-500 mb-4">Practice management &amp; payment data</p>
+                <div className="space-y-3">
+                    <Link href="/admin/halaxy" className="block">
+                        <div className="p-4 bg-charcoal/50 rounded-lg hover:bg-charcoal transition-colors border border-purple-700/30">
+                            <h3 className="font-semibold text-white mb-1">Halaxy Overview</h3>
+                            <p className="text-sm text-silver-400">Invoices, payments, outstanding balances, and failed payment alerts</p>
+                        </div>
+                    </Link>
+                </div>
+            </div>
+
             {/* Xero Tools */}
             <div className="card mt-8">
                 <h2 className="text-xl font-bold text-white mb-2">Xero Tools</h2>

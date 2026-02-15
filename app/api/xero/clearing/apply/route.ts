@@ -18,6 +18,11 @@ export async function POST(request: NextRequest) {
     // ── Batch reconcile mode (three-way matching) ──
     if ('matches' in body && Array.isArray(body.matches)) {
       const { matches, dryRun } = body as BatchReconcileRequest
+      // Medicare flag: route transfers to savings account instead of NAB
+      const isMedicare = body.medicare === true
+      const targetAccountId: string | undefined = isMedicare
+        ? process.env.XERO_SAVINGS_ACCOUNT_ID
+        : body.targetAccountId
 
       if (matches.length === 0) {
         return NextResponse.json(
@@ -27,6 +32,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (dryRun) {
+        const targetLabel = targetAccountId ? 'savings' : 'NAB'
         const resp: BatchReconcileResponse = {
           total: matches.length,
           succeeded: matches.length,
@@ -34,7 +40,7 @@ export async function POST(request: NextRequest) {
           results: matches.map((m) => ({
             invoiceNumber: m.invoiceNumber,
             success: true,
-            message: `Dry run: would create bank transfer for $${m.amount.toFixed(2)} (${m.invoiceNumber})`,
+            message: `Dry run: would create bank transfer for $${m.amount.toFixed(2)} (${m.invoiceNumber}) → ${targetLabel}`,
           })),
           dryRun: true,
         }
@@ -47,11 +53,13 @@ export async function POST(request: NextRequest) {
           amount: m.amount,
           date: m.date,
           reference: m.reference ?? m.invoiceNumber,
-        }))
+        })),
+        targetAccountId
       )
 
+      const targetLabel = targetAccountId ? 'savings' : 'NAB'
       console.log(
-        `[AUDIT] batch-reconcile by ${auth.user} at ${new Date().toISOString()} — items=${matches.length} succeeded=${result.succeeded} failed=${result.failed}`
+        `[AUDIT] batch-reconcile (${targetLabel}) by ${auth.user} at ${new Date().toISOString()} — items=${matches.length} succeeded=${result.succeeded} failed=${result.failed}`
       )
 
       const resp: BatchReconcileResponse = {

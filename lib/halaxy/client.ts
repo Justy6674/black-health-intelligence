@@ -295,6 +295,28 @@ export async function getBraintreePayments(
   return enrichPaymentsWithInvoices(braintreeOnly)
 }
 
+/** Check if a payment method is Medicare-related */
+function isMedicareMethod(method: string): boolean {
+  const m = method.toLowerCase()
+  return m.includes('medicare') || m.includes('bulk bill') || m.includes('dva')
+}
+
+/**
+ * Fetch only Medicare/DVA payments for a date range.
+ * These are bulk billing payments that flow through clearing → Savings account.
+ * Automatically enriches with invoice details (patient name, invoice number).
+ */
+export async function getMedicarePayments(
+  fromDate: string,
+  toDate: string
+): Promise<HalaxyPayment[]> {
+  const allPayments = await getPaymentTransactions(fromDate, toDate)
+  const medicareOnly = allPayments.filter(
+    (p) => isMedicareMethod(p.method) && p.type === 'Payment'
+  )
+  return enrichPaymentsWithInvoices(medicareOnly)
+}
+
 /** Check if Halaxy credentials are configured. */
 export function isHalaxyConfigured(): boolean {
   return !!(process.env.HALAXY_CLIENT_ID && process.env.HALAXY_CLIENT_SECRET)

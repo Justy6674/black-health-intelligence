@@ -19,7 +19,7 @@ import type {
 
 // ── Types ──
 
-type ViewMode = 'threeway' | 'legacy' | 'guide'
+type ViewMode = 'threeway' | 'legacy' | 'guide' | 'medicare'
 
 const CLEARING_AUDIT_KEY = 'xero_clearing_history'
 
@@ -118,6 +118,13 @@ export default function ClearingHelperPage() {
   const [guideData, setGuideData] = useState<ReconciliationGuideResponse | null>(null)
   const [guideMethodFilter, setGuideMethodFilter] = useState<'all' | 'Braintree' | 'medicare' | 'other'>('all')
 
+  // Medicare mode state
+  const [medicareResult, setMedicareResult] = useState<ReconciliationResult | null>(null)
+  const [medicareSelected, setMedicareSelected] = useState<Set<string>>(new Set())
+  const [medicareBatchResult, setMedicareBatchResult] = useState<BatchReconcileResponse | null>(null)
+  const [medicareStatusFilter, setMedicareStatusFilter] = useState<ThreeWayMatchStatus | 'all'>('all')
+  const [medicareReconciling, setMedicareReconciling] = useState(false)
+
   useEffect(() => {
     setClearingHistory(loadClearingHistory())
   }, [batchResult, legacyResults])
@@ -137,6 +144,35 @@ export default function ClearingHelperPage() {
     )
   }, [reconciliation])
 
+  // Medicare filtered matches
+  const medicareFilteredMatches = useMemo(() => {
+    if (!medicareResult) return []
+    if (medicareStatusFilter === 'all') return medicareResult.matches
+    return medicareResult.matches.filter((m) => m.status === medicareStatusFilter)
+  }, [medicareResult, medicareStatusFilter])
+
+  // Medicare ready matches (matched items that have a deposit)
+  const medicareReadyMatches = useMemo(() => {
+    if (!medicareResult) return []
+    return medicareResult.matches.filter(
+      (m) => m.status === 'matched' && m.bankDeposit
+    )
+  }, [medicareResult])
+
+  // Medicare batch groups: group ready items by deposit ID for batch transfers
+  const medicareBatchGroups = useMemo(() => {
+    const groups = new Map<string, { deposit: ThreeWayMatch['bankDeposit']; items: ThreeWayMatch[]; total: number }>()
+    for (const m of medicareReadyMatches) {
+      if (!m.bankDeposit) continue
+      const key = m.bankDeposit.bankTransactionId
+      const group = groups.get(key) ?? { deposit: m.bankDeposit, items: [], total: 0 }
+      group.items.push(m)
+      group.total += m.amount
+      groups.set(key, group)
+    }
+    return groups
+  }, [medicareReadyMatches])
+
   // ── Handlers ──
 
   const applyPreset = (preset: string) => {
@@ -151,6 +187,9 @@ export default function ClearingHelperPage() {
     setReconciliation(null)
     setLegacySummary(null)
     setGuideData(null)
+    setMedicareResult(null)
+    setMedicareSelected(new Set())
+    setMedicareBatchResult(null)
     setSelectedMatches(new Set())
     setBatchResult(null)
     setLegacyResults(new Map())
@@ -183,6 +222,22 @@ export default function ClearingHelperPage() {
         }
         const data: ReconciliationGuideResponse = await res.json()
         setGuideData(data)
+      } else if (viewMode === 'medicare') {
+        params.set('mode', 'medicare')
+        const res = await fetch(`/api/xero/clearing/summary?${params}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        const data: ReconciliationResult = await res.json()
+        setMedicareResult(data)
+        // Auto-select all ready matches
+        const readyIds = new Set(
+          data.matches
+            .filter((m) => m.status === 'matched' && m.bankDeposit)
+            .map((m) => m.bankDeposit!.bankTransactionId)
+        )
+        setMedicareSelected(readyIds)
       } else {
         params.set('mode', 'legacy')
         params.set('tolerance', String(Math.round(toleranceDollars * 100)))
@@ -273,6 +328,79 @@ export default function ClearingHelperPage() {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setReconciling(false)
+    }
+  }
+
+  // ── Medicare batch reconcile ──
+  // Creates ONE bank transfer per deposit (batch total) → savings account
+  const reconcileMedicareBatches = async () => {
+    if (!medicareResult) return
+    setMedicareReconciling(true)
+    setError('')
+    setMedicareBatchResult(null)
+
+    // Group selected items by deposit ID and create one transfer per deposit
+    const batchTransfers: Array<{
+      invoiceNumber: string
+      clearingTransactionId: string
+      amount: number
+      date: string
+      reference: string
+    }> = []
+
+    for (const [depositId, group] of medicareBatchGroups) {
+      if (!medicareSelected.has(depositId)) continue
+      batchTransfers.push({
+        invoiceNumber: `Medicare batch ${group.deposit?.date ?? ''}`,
+        clearingTransactionId: depositId, // not used for transfer, but required by type
+        amount: Math.round(group.total * 100) / 100,
+        date: group.deposit?.date ?? group.items[0]?.date ?? fromDate,
+        reference: `Medicare batch ${group.deposit?.date ?? ''} (${group.items.length} items)`,
+      })
+    }
+
+    if (batchTransfers.length === 0) {
+      setError('No batches selected')
+      setMedicareReconciling(false)
+      return
+    }
+
+    try {
+      const body = {
+        matches: batchTransfers,
+        medicare: true, // signals API to use XERO_SAVINGS_ACCOUNT_ID
+        dryRun,
+      }
+
+      const res = await fetch('/api/xero/clearing/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Request failed (${res.status})`)
+      }
+
+      const data: BatchReconcileResponse = await res.json()
+      setMedicareBatchResult(data)
+
+      saveClearingEntry({
+        timestamp: new Date().toISOString(),
+        date: fromDate === toDate ? fromDate : `${fromDate}\u2013${toDate}`,
+        amount: batchTransfers.reduce((s, t) => s + t.amount, 0),
+        clearingCount: batchTransfers.length,
+        dryRun,
+        success: data.failed === 0,
+        batchMode: true,
+        batchTotal: data.total,
+        batchSucceeded: data.succeeded,
+      })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setMedicareReconciling(false)
     }
   }
 
@@ -432,6 +560,16 @@ export default function ClearingHelperPage() {
               Legacy (Subset-Sum)
             </button>
             <button
+              onClick={() => setViewMode('medicare')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'medicare'
+                  ? 'bg-cyan-700/40 text-white'
+                  : 'bg-charcoal text-silver-400 hover:text-white'
+              }`}
+            >
+              Medicare / Savings
+            </button>
+            <button
               onClick={() => setViewMode('guide')}
               className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                 viewMode === 'guide'
@@ -534,6 +672,40 @@ export default function ClearingHelperPage() {
           dryRun={dryRun}
           feeAccountCode={feeAccountCode}
           onApply={legacyApply}
+        />
+      )}
+
+      {/* ── Medicare Mode Results ── */}
+      {viewMode === 'medicare' && medicareResult && (
+        <MedicareView
+          reconciliation={medicareResult}
+          filteredMatches={medicareFilteredMatches}
+          selectedDeposits={medicareSelected}
+          statusFilter={medicareStatusFilter}
+          readyMatches={medicareReadyMatches}
+          batchGroups={medicareBatchGroups}
+          dryRun={dryRun}
+          reconciling={medicareReconciling}
+          batchResult={medicareBatchResult}
+          onStatusFilterChange={setMedicareStatusFilter}
+          onToggleDeposit={(depositId) => {
+            setMedicareSelected((prev) => {
+              const next = new Set(prev)
+              if (next.has(depositId)) next.delete(depositId)
+              else next.add(depositId)
+              return next
+            })
+          }}
+          onSelectAll={() => {
+            const ids = new Set(
+              medicareReadyMatches
+                .filter((m) => m.bankDeposit)
+                .map((m) => m.bankDeposit!.bankTransactionId)
+            )
+            setMedicareSelected(ids)
+          }}
+          onDeselectAll={() => setMedicareSelected(new Set())}
+          onReconcile={reconcileMedicareBatches}
         />
       )}
 
@@ -1005,6 +1177,321 @@ function StatusBadge({
     <span className={`inline-block px-1.5 py-0.5 text-[10px] font-medium rounded border ${cls}`}>
       {label}
     </span>
+  )
+}
+
+// ══════════════════════════════════════════
+// Medicare View (savings account batch reconciliation)
+// ══════════════════════════════════════════
+
+function MedicareView({
+  reconciliation,
+  filteredMatches,
+  selectedDeposits,
+  statusFilter,
+  readyMatches,
+  batchGroups,
+  dryRun,
+  reconciling,
+  batchResult,
+  onStatusFilterChange,
+  onToggleDeposit,
+  onSelectAll,
+  onDeselectAll,
+  onReconcile,
+}: {
+  reconciliation: ReconciliationResult
+  filteredMatches: ThreeWayMatch[]
+  selectedDeposits: Set<string>
+  statusFilter: ThreeWayMatchStatus | 'all'
+  readyMatches: ThreeWayMatch[]
+  batchGroups: Map<string, { deposit: ThreeWayMatch['bankDeposit']; items: ThreeWayMatch[]; total: number }>
+  dryRun: boolean
+  reconciling: boolean
+  batchResult: BatchReconcileResponse | null
+  onStatusFilterChange: (status: ThreeWayMatchStatus | 'all') => void
+  onToggleDeposit: (depositId: string) => void
+  onSelectAll: () => void
+  onDeselectAll: () => void
+  onReconcile: () => void
+}) {
+  const { stats } = reconciliation
+  const selectedBatchCount = [...batchGroups].filter(([id]) => selectedDeposits.has(id)).length
+  const selectedAmount = [...batchGroups]
+    .filter(([id]) => selectedDeposits.has(id))
+    .reduce((s, [, g]) => s + g.total, 0)
+
+  return (
+    <>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <SummaryCard
+          label="Clearing Balance"
+          value={`$${reconciliation.clearingBalance.toFixed(2)}`}
+          sublabel={`Target: $${reconciliation.expectedBalance.toFixed(2)}`}
+          colour="text-white"
+        />
+        <SummaryCard
+          label="Ready (Batch)"
+          value={`${batchGroups.size} batch${batchGroups.size !== 1 ? 'es' : ''}`}
+          sublabel={`${stats.matched} items, $${stats.readyAmount.toFixed(2)}`}
+          colour="text-green-400"
+          onClick={() => onStatusFilterChange('matched')}
+        />
+        <SummaryCard
+          label="Awaiting Deposit"
+          value={String(stats.awaitingDeposit)}
+          sublabel="Not yet in savings"
+          colour="text-yellow-400"
+          onClick={() => onStatusFilterChange('awaiting_deposit')}
+        />
+        <SummaryCard
+          label="Issues"
+          value={String(stats.syncFailed + stats.manualEntry + stats.orphanDeposits)}
+          sublabel={`${stats.syncFailed} sync fail, ${stats.manualEntry} manual, ${stats.orphanDeposits} orphan`}
+          colour="text-red-400"
+          onClick={() => onStatusFilterChange('all')}
+        />
+      </div>
+
+      {/* Info banner */}
+      <div className="card mb-6 border-cyan-500/30 bg-cyan-900/10">
+        <p className="text-sm text-cyan-300">
+          Medicare payments are <strong>batched</strong> — one savings deposit covers multiple patients.
+          Reconciling creates one bank transfer per batch (clearing &rarr; savings), not per patient.
+        </p>
+      </div>
+
+      {/* Batch Actions */}
+      <div className="card mb-6">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Status filter tabs */}
+          <div className="flex gap-1">
+            {(
+              [
+                { key: 'all', label: 'All', count: stats.total },
+                { key: 'matched', label: 'Ready', count: stats.matched },
+                { key: 'awaiting_deposit', label: 'Awaiting', count: stats.awaitingDeposit },
+                { key: 'sync_failed', label: 'Sync Fail', count: stats.syncFailed },
+                { key: 'manual_entry', label: 'Manual', count: stats.manualEntry },
+                { key: 'orphan_deposit', label: 'Orphan', count: stats.orphanDeposits },
+              ] as Array<{ key: ThreeWayMatchStatus | 'all'; label: string; count: number }>
+            )
+              .filter((t) => t.key === 'all' || t.count > 0)
+              .map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => onStatusFilterChange(tab.key)}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    statusFilter === tab.key
+                      ? 'bg-cyan-700/40 text-white'
+                      : 'bg-silver-700/20 text-silver-400 hover:text-white'
+                  }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
+          </div>
+
+          {/* Selection controls */}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={onSelectAll}
+              className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
+            >
+              Select all batches
+            </button>
+            <button
+              onClick={onDeselectAll}
+              className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
+            >
+              Deselect all
+            </button>
+          </div>
+
+          {/* Reconcile button */}
+          <button
+            onClick={onReconcile}
+            disabled={reconciling || selectedBatchCount === 0}
+            className="px-4 py-2 bg-cyan-700 text-white text-sm font-medium rounded hover:bg-cyan-600 disabled:opacity-50 transition-colors"
+          >
+            {reconciling
+              ? 'Reconciling\u2026'
+              : dryRun
+                ? `Preview ${selectedBatchCount} batch${selectedBatchCount !== 1 ? 'es' : ''} ($${selectedAmount.toFixed(2)}) \u2192 Savings`
+                : `Reconcile ${selectedBatchCount} batch${selectedBatchCount !== 1 ? 'es' : ''} ($${selectedAmount.toFixed(2)}) \u2192 Savings`}
+          </button>
+        </div>
+      </div>
+
+      {/* Batch result */}
+      {batchResult && (
+        <div
+          className={`card mb-6 border ${
+            batchResult.failed === 0
+              ? 'border-green-500/40 bg-green-900/10'
+              : 'border-red-500/40 bg-red-900/10'
+          }`}
+        >
+          <h3 className="text-sm font-semibold text-white mb-2">
+            {batchResult.dryRun ? 'Dry Run Result' : 'Reconciliation Result'}
+          </h3>
+          <div className="text-sm text-silver-300">
+            <p>
+              Batches: {batchResult.total} | Succeeded: {batchResult.succeeded} | Failed:{' '}
+              {batchResult.failed}
+            </p>
+          </div>
+          {batchResult.results.some((r) => !r.success) && (
+            <div className="mt-2 space-y-1">
+              {batchResult.results
+                .filter((r) => !r.success)
+                .map((r, i) => (
+                  <div key={i} className="text-xs text-red-400">
+                    {r.invoiceNumber}: {r.message}
+                  </div>
+                ))}
+            </div>
+          )}
+          {!batchResult.dryRun && batchResult.failed === 0 && (
+            <p className="mt-2 text-xs text-silver-400">
+              Bank transfers created (clearing &rarr; savings). Go to Xero &rarr; Bank Accounts &rarr;
+              Savings &rarr; Reconcile to confirm.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Batch groups display */}
+      {batchGroups.size > 0 && statusFilter !== 'all' && statusFilter !== 'matched' ? null : (
+        <div className="space-y-4 mb-6">
+          {[...batchGroups].map(([depositId, group]) => (
+            <div key={depositId} className="card border border-silver-700/30">
+              <div className="flex items-start gap-3 mb-3">
+                <input
+                  type="checkbox"
+                  checked={selectedDeposits.has(depositId)}
+                  onChange={() => onToggleDeposit(depositId)}
+                  className="rounded mt-1"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-white font-semibold">
+                        Savings Deposit: ${group.deposit?.amount.toFixed(2)}
+                      </span>
+                      <span className="text-silver-400 text-xs ml-2">
+                        {group.deposit?.date} &mdash; ref: {group.deposit?.reference || '(none)'}
+                      </span>
+                    </div>
+                    <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-cyan-900/40 text-cyan-300 border border-cyan-500/30">
+                      {group.items.length} patient{group.items.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="text-xs text-silver-400 mt-1">
+                    Clearing total: ${group.total.toFixed(2)}
+                    {Math.abs(group.total - (group.deposit?.amount ?? 0)) > 0.01 && (
+                      <span className="text-amber-400 ml-2">
+                        (diff: ${(group.total - (group.deposit?.amount ?? 0)).toFixed(2)})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Individual items within the batch */}
+              <div className="ml-8 space-y-0.5 max-h-40 overflow-y-auto">
+                {group.items.map((m) => (
+                  <div
+                    key={m.clearingTxn?.transactionId ?? m.halaxyPayment?.id}
+                    className="text-xs font-mono text-silver-300 flex items-center gap-1.5 flex-wrap"
+                  >
+                    <span>${m.amount.toFixed(2)}</span>
+                    <span className="text-silver-600">&mdash;</span>
+                    <span className="text-white">{m.invoiceNumber || '(no ref)'}</span>
+                    <span className="text-silver-600">&mdash;</span>
+                    <span className="text-purple-400 font-sans">{m.patientName || '(unknown)'}</span>
+                    <span className="text-silver-600">&mdash;</span>
+                    <span>{m.date}</span>
+                    {m.halaxyPayment && (
+                      <PaymentMethodBadge method={m.halaxyPayment.method} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Individual items table for non-batch statuses */}
+      {(statusFilter !== 'all' && statusFilter !== 'matched') && filteredMatches.length > 0 && (
+        <div className="card mb-6 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-silver-400 border-b border-silver-700/30">
+                <th className="pb-2 pr-3">Status</th>
+                <th className="pb-2 pr-3">Invoice</th>
+                <th className="pb-2 pr-3">Patient</th>
+                <th className="pb-2 pr-3 text-right">Amount</th>
+                <th className="pb-2 pr-3">Halaxy</th>
+                <th className="pb-2 pr-3">Clearing</th>
+                <th className="pb-2">Savings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredMatches.map((match, idx) => (
+                <tr
+                  key={match.clearingTxn?.transactionId ?? match.halaxyPayment?.id ?? `m-${idx}`}
+                  className="border-b border-silver-700/10 hover:bg-silver-800/20"
+                >
+                  <td className="py-2 pr-3">
+                    <StatusBadge status={match.status} />
+                  </td>
+                  <td className="py-2 pr-3 font-mono text-white text-xs">
+                    {match.invoiceNumber || '\u2014'}
+                  </td>
+                  <td className="py-2 pr-3 text-silver-300 text-xs">{match.patientName || '\u2014'}</td>
+                  <td className="py-2 pr-3 text-right text-white font-mono text-xs">
+                    ${match.amount.toFixed(2)}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {match.halaxyPayment ? (
+                      <div className="text-xs">
+                        <span className="text-cyan-400">{match.halaxyPayment.method}</span>
+                        <span className="text-silver-500 ml-1">{match.halaxyPayment.created.slice(0, 10)}</span>
+                      </div>
+                    ) : (
+                      <span className="text-silver-600 text-xs">\u2014</span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {match.clearingTxn ? (
+                      <div className="text-xs">
+                        <span className="text-blue-400">{match.clearingTxn.reference || match.clearingTxn.invoiceNumber}</span>
+                        <span className="text-silver-500 ml-1">{match.clearingTxn.date}</span>
+                      </div>
+                    ) : (
+                      <span className="text-silver-600 text-xs">\u2014</span>
+                    )}
+                  </td>
+                  <td className="py-2">
+                    {match.bankDeposit ? (
+                      <div className="text-xs">
+                        <span className="text-emerald-400">${match.bankDeposit.amount.toFixed(2)}</span>
+                        <span className="text-silver-500 ml-1">{match.bankDeposit.date}</span>
+                      </div>
+                    ) : (
+                      <span className="text-silver-600 text-xs">\u2014</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   )
 }
 
