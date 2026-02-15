@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/xero/auth'
 import {
   getUnreconciledBankTransactions,
+  getAllBankDeposits,
   getClearingTransactions,
   suggestGroupings,
   reconcileThreeWay,
@@ -281,8 +282,10 @@ export async function GET(request: NextRequest) {
 
       const toleranceCents = Number(searchParams.get('tolerance') ?? 200)
 
+      // Fetch ALL savings deposits (including reconciled) so we can show the full picture.
+      // Already-reconciled deposits are flagged so the UI knows not to create duplicate transfers.
       const [savingsDeposits, clearingTxns] = await Promise.all([
-        getUnreconciledBankTransactions(savingsAccountId, fromDate, toDate),
+        getAllBankDeposits(savingsAccountId, fromDate, toDate),
         getClearingTransactions(clearingAccountId, fromDate, toDate),
       ])
 

@@ -1167,26 +1167,37 @@ function MedicareView({
   onReconcile: () => void
 }) {
   const { stats, batchMatches, unmatchedDeposits, unmatchedClearing } = result
-  const selectedCount = selectedIndices.size
-  const selectedAmount = [...selectedIndices].reduce(
-    (s, i) => s + (batchMatches[i]?.deposit.amount ?? 0), 0
-  )
+  // Only count unreconciled batches as actionable
+  const actionableBatches = batchMatches.filter((b) => !b.deposit.isReconciled)
+  const reconciledBatches = batchMatches.filter((b) => b.deposit.isReconciled)
+  const selectedCount = [...selectedIndices].filter(
+    (i) => batchMatches[i] && !batchMatches[i].deposit.isReconciled
+  ).length
+  const selectedAmount = [...selectedIndices]
+    .filter((i) => batchMatches[i] && !batchMatches[i].deposit.isReconciled)
+    .reduce((s, i) => s + (batchMatches[i]?.deposit.amount ?? 0), 0)
 
   return (
     <>
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <SummaryCard
-          label="Clearing (RECEIVE)"
+          label="Clearing Payments"
           value={`$${stats.totalClearingAmount.toFixed(2)}`}
-          sublabel={`${stats.totalClearingEntries} patient entries`}
+          sublabel={`${stats.totalClearingEntries} entries (${stats.excludedTransferCount} transfers excluded)`}
           colour="text-white"
         />
         <SummaryCard
           label="Matched Batches"
           value={`${stats.matchedDeposits} of ${stats.totalDeposits}`}
-          sublabel={`$${stats.readyAmount.toFixed(2)} ready`}
+          sublabel={`$${stats.readyAmount.toFixed(2)} ready to reconcile`}
           colour="text-green-400"
+        />
+        <SummaryCard
+          label="Already Done"
+          value={String(stats.alreadyReconciledDeposits)}
+          sublabel="Savings deposits already reconciled"
+          colour="text-cyan-400"
         />
         <SummaryCard
           label="Unmatched Deposits"
@@ -1208,7 +1219,38 @@ function MedicareView({
           Subset-sum matching: finds which individual patient payments add up to each Medicare deposit.
           One bank transfer per deposit (clearing &rarr; savings).
         </p>
+        {result.clearingTxnTypes.length > 0 && (
+          <p className="text-xs text-silver-500 mt-1">
+            Clearing txn types found: {result.clearingTxnTypes.join(', ')}
+          </p>
+        )}
       </div>
+
+      {/* Already reconciled info */}
+      {reconciledBatches.length > 0 && (
+        <div className="card mb-6 border-cyan-500/20 bg-cyan-900/5">
+          <h3 className="text-sm font-semibold text-cyan-400 mb-2">
+            Already Reconciled ({reconciledBatches.length} batches)
+          </h3>
+          <p className="text-xs text-silver-400 mb-2">
+            These savings deposits are already reconciled in Xero. No action needed.
+          </p>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {reconciledBatches.map((batch) => (
+              <div key={batch.deposit.bankTransactionId} className="text-xs font-mono text-silver-400 flex items-center gap-2">
+                <span className="text-green-500">&#10003;</span>
+                <span>${batch.deposit.amount.toFixed(2)}</span>
+                <span className="text-silver-600">&mdash;</span>
+                <span>{batch.deposit.date}</span>
+                <span className="text-silver-600">&mdash;</span>
+                <span>{batch.clearingEntries.length} patients</span>
+                <span className="text-silver-600">&mdash;</span>
+                <span>{batch.clearingEntries.map((c) => c.contactName || c.reference).filter(Boolean).slice(0, 3).join(', ')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Batch Actions */}
       <div className="card mb-6">
@@ -1279,11 +1321,13 @@ function MedicareView({
         </div>
       )}
 
-      {/* Matched batch groups */}
-      {batchMatches.length > 0 && (
+      {/* Actionable batch groups (unreconciled deposits only) */}
+      {actionableBatches.length > 0 && (
         <div className="space-y-4 mb-6">
-          <h3 className="text-sm font-semibold text-white">Matched Batches ({batchMatches.length})</h3>
-          {batchMatches.map((batch, idx) => (
+          <h3 className="text-sm font-semibold text-white">Ready to Reconcile ({actionableBatches.length} batches)</h3>
+          {batchMatches.map((batch, idx) => {
+            if (batch.deposit.isReconciled) return null
+            return (
             <div key={batch.deposit.bankTransactionId} className="card border border-silver-700/30">
               <div className="flex items-start gap-3 mb-3">
                 <input
@@ -1342,7 +1386,8 @@ function MedicareView({
                 ))}
               </div>
             </div>
-          ))}
+          )
+          })}
         </div>
       )}
 

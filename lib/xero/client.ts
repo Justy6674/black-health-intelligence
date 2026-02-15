@@ -833,6 +833,35 @@ export async function getUnreconciledBankTransactions(
 }
 
 /**
+ * Fetch ALL bank deposits (receive transactions) for an account, including reconciled.
+ * Used by Medicare mode to show full picture even when deposits are already reconciled.
+ */
+export async function getAllBankDeposits(
+  accountId: string,
+  fromDate: string,
+  toDate: string
+): Promise<(BankDeposit & { isReconciled: boolean })[]> {
+  const headers = await xeroHeaders()
+  const where = buildBankTxnWhere(accountId, fromDate, toDate, ['Type=="RECEIVE"'])
+  const url = `${XERO_API_BASE}/BankTransactions?where=${encodeURIComponent(where)}`
+
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    throw new Error(`Xero BankTransactions ${res.status}: ${await res.text()}`)
+  }
+  const data = await res.json()
+  const txns: Array<Record<string, unknown>> = data.BankTransactions ?? []
+
+  return txns.map((t) => ({
+    bankTransactionId: t.BankTransactionID as string,
+    date: (t.Date as string).slice(0, 10),
+    amount: Number(t.Total ?? 0),
+    reference: (t.Reference as string) ?? '',
+    isReconciled: t.IsReconciled as boolean,
+  }))
+}
+
+/**
  * Fetch clearing‑account transactions for a period.
  * Returns Contact name when available (for patient identification).
  */
@@ -1380,7 +1409,7 @@ export function reconcileThreeWay(
  * Uses the same findBestSubsetMatch algorithm as legacy mode.
  */
 export interface MedicareBatchMatch {
-  deposit: BankDeposit
+  deposit: BankDeposit & { isReconciled: boolean }
   clearingEntries: ClearingTransaction[]
   total: number
   difference: number
@@ -1389,37 +1418,51 @@ export interface MedicareBatchMatch {
 
 export interface MedicareReconciliationResult {
   batchMatches: MedicareBatchMatch[]
-  unmatchedDeposits: BankDeposit[]
+  unmatchedDeposits: (BankDeposit & { isReconciled: boolean })[]
   unmatchedClearing: ClearingTransaction[]
   clearingBalance: number
+  /** Debug: all txn types found in clearing, for troubleshooting */
+  clearingTxnTypes: string[]
   stats: {
     totalDeposits: number
     matchedDeposits: number
     unmatchedDeposits: number
+    alreadyReconciledDeposits: number
     totalClearingEntries: number
     matchedClearingEntries: number
     unmatchedClearingEntries: number
     readyAmount: number
     totalClearingAmount: number
+    /** How many clearing txns were excluded by the transfer filter */
+    excludedTransferCount: number
   }
 }
 
 export function reconcileMedicare(
   clearingTxns: ClearingTransaction[],
-  savingsDeposits: BankDeposit[],
+  savingsDeposits: (BankDeposit & { isReconciled: boolean })[],
   toleranceCents: number = 200 // $2.00 tolerance for rounding
 ): MedicareReconciliationResult {
-  // Step 1: Filter clearing to RECEIVE only — these are the actual patient payments.
-  // Exclude SPEND, SPEND-TRANSFER (bank transfers out), RECEIVE-TRANSFER (transfers in).
-  const receiveOnly = clearingTxns.filter((t) => {
+  // Step 1: Filter clearing to patient payments only.
+  // Exclude TRANSFER types (bank transfers the user or tool already created).
+  // Keep RECEIVE, SPEND (Halaxy fees), and unknown types.
+  const paymentEntries = clearingTxns.filter((t) => {
     const type = (t.txnType ?? '').toUpperCase()
-    return type === 'RECEIVE' || type === '' // include if type unknown (backwards compat)
+    // Exclude transfers — these are clearing→savings or clearing→NAB moves
+    if (type.includes('TRANSFER')) return false
+    // Only include positive amounts (credits/payments IN to clearing)
+    return t.amount > 0
   })
 
+  const excludedTransferCount = clearingTxns.length - paymentEntries.length
+  // Collect all types for debugging
+  const clearingTxnTypes = [...new Set(clearingTxns.map((t) => t.txnType ?? '(none)'))]
+
   // Step 2: Use subset-sum matching — find which clearing entries sum to each deposit
+  // Match against ALL deposits (including reconciled) so we can show the full picture
   const used = new Set<string>()
   const batchMatches: MedicareBatchMatch[] = []
-  const unmatchedDeposits: BankDeposit[] = []
+  const unmatchedDeposits: (BankDeposit & { isReconciled: boolean })[] = []
 
   // Sort deposits by date (oldest first) for deterministic matching
   const sortedDeposits = [...savingsDeposits].sort(
@@ -1428,7 +1471,7 @@ export function reconcileMedicare(
 
   for (const dep of sortedDeposits) {
     const targetCents = Math.round(dep.amount * 100)
-    const available = receiveOnly.filter((c) => !used.has(c.transactionId))
+    const available = paymentEntries.filter((c) => !used.has(c.transactionId))
     const result = findBestSubsetMatch(available, targetCents, toleranceCents)
 
     if (result) {
@@ -1449,24 +1492,31 @@ export function reconcileMedicare(
     }
   }
 
-  const unmatchedClearing = receiveOnly.filter((c) => !used.has(c.transactionId))
-  const clearingBalance = receiveOnly.reduce((s, t) => s + t.amount, 0)
-  const readyAmount = batchMatches.reduce((s, m) => s + m.deposit.amount, 0)
+  const unmatchedClearing = paymentEntries.filter((c) => !used.has(c.transactionId))
+  const clearingBalance = paymentEntries.reduce((s, t) => s + t.amount, 0)
+  // Only count unreconciled deposits as "ready" (reconciled ones are already done)
+  const readyAmount = batchMatches
+    .filter((m) => !m.deposit.isReconciled)
+    .reduce((s, m) => s + m.deposit.amount, 0)
+  const alreadyReconciled = savingsDeposits.filter((d) => d.isReconciled).length
 
   return {
     batchMatches,
     unmatchedDeposits,
     unmatchedClearing,
     clearingBalance: Math.round(clearingBalance * 100) / 100,
+    clearingTxnTypes,
     stats: {
       totalDeposits: savingsDeposits.length,
       matchedDeposits: batchMatches.length,
       unmatchedDeposits: unmatchedDeposits.length,
-      totalClearingEntries: receiveOnly.length,
-      matchedClearingEntries: receiveOnly.length - unmatchedClearing.length,
+      alreadyReconciledDeposits: alreadyReconciled,
+      totalClearingEntries: paymentEntries.length,
+      matchedClearingEntries: paymentEntries.length - unmatchedClearing.length,
       unmatchedClearingEntries: unmatchedClearing.length,
       readyAmount: Math.round(readyAmount * 100) / 100,
       totalClearingAmount: Math.round(clearingBalance * 100) / 100,
+      excludedTransferCount,
     },
   }
 }
