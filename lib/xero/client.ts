@@ -782,6 +782,129 @@ export async function deletePayment(paymentId: string): Promise<{ success: boole
   return { success: true, message: 'Payment removed' }
 }
 
+// ── Clearing account cleanup: purge old entries ──
+
+export interface ClearingPurgeResult {
+  paymentsFound: number
+  paymentsDeleted: number
+  bankTxnsFound: number
+  bankTxnsDeleted: number
+  errors: Array<{ id: string; message: string }>
+  dryRun: boolean
+}
+
+/**
+ * Purge old entries from a Xero bank account before a cutoff date.
+ * Deletes both Payments (Halaxy invoice payments) and BankTransactions (Halaxy fees/misc).
+ * Only unreconciled entries can be deleted. Works on any account (clearing, savings, etc.).
+ */
+export async function purgeAccountBefore(
+  accountId: string,
+  cutoffDate: string, // entries BEFORE this date will be deleted (YYYY-MM-DD)
+  dryRun: boolean = true
+): Promise<ClearingPurgeResult> {
+  const headers = await xeroHeaders()
+
+  const cutoff = cutoffDate.replace(/-/g, ',')
+
+  // 1. Fetch Payments on the account before cutoff
+  const payWhere = [
+    `Account.AccountID=guid("${accountId}")`,
+    `Date<DateTime(${cutoff})`,
+    `Status=="AUTHORISED"`,
+  ].join(' AND ')
+  const payUrl = `${XERO_API_BASE}/Payments?where=${encodeURIComponent(payWhere)}&order=Date`
+  const payRes = await fetch(payUrl, { headers })
+  if (!payRes.ok) {
+    throw new Error(`Xero Payments ${payRes.status}: ${await payRes.text()}`)
+  }
+  const payData = await payRes.json()
+  const payments: Array<Record<string, unknown>> = payData.Payments ?? []
+
+  // 2. Fetch BankTransactions on the account before cutoff (unreconciled only)
+  const btWhere = [
+    `BankAccount.AccountID=guid("${accountId}")`,
+    `Date<DateTime(${cutoff})`,
+    `Status=="AUTHORISED"`,
+  ].join(' AND ')
+  const btUrl = `${XERO_API_BASE}/BankTransactions?where=${encodeURIComponent(btWhere)}`
+  const btRes = await fetch(btUrl, { headers })
+  if (!btRes.ok) {
+    throw new Error(`Xero BankTransactions ${btRes.status}: ${await btRes.text()}`)
+  }
+  const btData = await btRes.json()
+  const bankTxns: Array<Record<string, unknown>> = btData.BankTransactions ?? []
+  // Only unreconciled can be deleted
+  const deletableBankTxns = bankTxns.filter((t) => t.IsReconciled !== true)
+
+  const result: ClearingPurgeResult = {
+    paymentsFound: payments.length,
+    paymentsDeleted: 0,
+    bankTxnsFound: deletableBankTxns.length,
+    bankTxnsDeleted: 0,
+    errors: [],
+    dryRun,
+  }
+
+  if (dryRun) return result
+
+  // 3. Delete Payments in batches
+  for (let i = 0; i < payments.length; i++) {
+    const paymentId = payments[i].PaymentID as string
+    try {
+      const res = await fetch(`${XERO_API_BASE}/Payments/${paymentId}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ Status: 'DELETED' }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        result.errors.push({ id: paymentId, message: `Payment ${res.status}: ${text.slice(0, 200)}` })
+      } else {
+        const data = await res.json()
+        const p = (data.Payments ?? [])[0]
+        if (p?.HasErrors) {
+          const msgs = ((p.ValidationErrors as Array<{ Message: string }>) ?? []).map((e) => e.Message).join('; ')
+          result.errors.push({ id: paymentId, message: msgs })
+        } else {
+          result.paymentsDeleted++
+        }
+      }
+    } catch (err) {
+      result.errors.push({ id: paymentId, message: err instanceof Error ? err.message : 'Unknown error' })
+    }
+    // Rate limit: ~30 per minute for writes
+    if (i > 0 && i % 25 === 0) {
+      await new Promise((r) => setTimeout(r, VOID_BATCH_DELAY_MS))
+    }
+  }
+
+  // 4. Delete BankTransactions in batches
+  for (let i = 0; i < deletableBankTxns.length; i++) {
+    const txnId = deletableBankTxns[i].BankTransactionID as string
+    try {
+      const res = await fetch(`${XERO_API_BASE}/BankTransactions/${txnId}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ Status: 'DELETED' }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        result.errors.push({ id: txnId, message: `BankTxn ${res.status}: ${text.slice(0, 200)}` })
+      } else {
+        result.bankTxnsDeleted++
+      }
+    } catch (err) {
+      result.errors.push({ id: txnId, message: err instanceof Error ? err.message : 'Unknown error' })
+    }
+    if (i > 0 && i % 25 === 0) {
+      await new Promise((r) => setTimeout(r, VOID_BATCH_DELAY_MS))
+    }
+  }
+
+  return result
+}
+
 // ── Feature 2: Clearing‑account reconciliation ──
 
 /**

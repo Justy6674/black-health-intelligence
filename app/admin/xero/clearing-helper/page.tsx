@@ -201,6 +201,13 @@ export default function ClearingHelperPage() {
   const [medicareManualInput, setMedicareManualInput] = useState('')
   const [medicareManualMatches, setMedicareManualMatches] = useState<ManualDepositMatch[]>([])
   const [medicareManualSelected, setMedicareManualSelected] = useState<Set<number>>(new Set())
+  // Purge old entries
+  const [purging, setPurging] = useState(false)
+  const [purgeResult, setPurgeResult] = useState<{
+    paymentsFound: number; paymentsDeleted: number
+    bankTxnsFound: number; bankTxnsDeleted: number
+    errors: Array<{ id: string; message: string }>; dryRun: boolean
+  } | null>(null)
 
   useEffect(() => {
     setClearingHistory(loadClearingHistory())
@@ -532,6 +539,37 @@ export default function ClearingHelperPage() {
     }
   }
 
+  // ── Purge old entries from an account ──
+  const purgeOldEntries = async (accountType: string) => {
+    setPurging(true)
+    setError('')
+    setPurgeResult(null)
+
+    try {
+      const res = await fetch('/api/xero/clearing/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: accountType,
+          cutoffDate: '2026-01-01',
+          dryRun,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Request failed (${res.status})`)
+      }
+
+      const data = await res.json()
+      setPurgeResult(data)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setPurging(false)
+    }
+  }
+
   // ── Legacy mode apply ──
   const legacyApply = (match: DepositMatch) => {
     setConfirmModal(match)
@@ -801,6 +839,56 @@ export default function ClearingHelperPage() {
           feeAccountCode={feeAccountCode}
           onApply={legacyApply}
         />
+      )}
+
+      {/* ── Purge old entries (all modes) ── */}
+      {viewMode === 'medicare' && (
+        <div className="card mb-6 border-red-500/30 bg-red-900/10">
+          <h3 className="text-sm font-semibold text-red-300 mb-2">Purge Pre-January Entries</h3>
+          <p className="text-xs text-silver-400 mb-3">
+            Delete all unreconciled Halaxy payment entries from before 1 Jan 2026.
+            These are orphaned from voided invoices.
+            {dryRun ? ' (Dry run — preview only, nothing will be deleted)' : ' WARNING: Live mode — entries WILL be deleted.'}
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => purgeOldEntries('savings')}
+              disabled={purging}
+              className="px-3 py-1.5 text-xs font-medium rounded bg-red-800/40 text-red-300 border border-red-500/30 hover:bg-red-700/40 disabled:opacity-50 transition-colors"
+            >
+              {purging ? 'Purging\u2026' : 'Purge Savings'}
+            </button>
+            <button
+              onClick={() => purgeOldEntries('clearing')}
+              disabled={purging}
+              className="px-3 py-1.5 text-xs font-medium rounded bg-red-800/40 text-red-300 border border-red-500/30 hover:bg-red-700/40 disabled:opacity-50 transition-colors"
+            >
+              {purging ? 'Purging\u2026' : 'Purge Clearing'}
+            </button>
+            <button
+              onClick={() => purgeOldEntries('nab')}
+              disabled={purging}
+              className="px-3 py-1.5 text-xs font-medium rounded bg-red-800/40 text-red-300 border border-red-500/30 hover:bg-red-700/40 disabled:opacity-50 transition-colors"
+            >
+              {purging ? 'Purging\u2026' : 'Purge NAB'}
+            </button>
+          </div>
+          {purgeResult && (
+            <div className={`mt-3 text-xs ${purgeResult.dryRun ? 'text-yellow-300' : 'text-green-300'}`}>
+              <p className="font-semibold">{purgeResult.dryRun ? 'Dry Run Preview:' : 'Purge Complete:'}</p>
+              <p>Payments: {purgeResult.paymentsFound} found, {purgeResult.paymentsDeleted} deleted</p>
+              <p>Bank Txns: {purgeResult.bankTxnsFound} found, {purgeResult.bankTxnsDeleted} deleted</p>
+              {purgeResult.errors.length > 0 && (
+                <div className="mt-1 text-red-400">
+                  {purgeResult.errors.slice(0, 10).map((e, i) => (
+                    <p key={i}>{e.id.slice(0, 8)}: {e.message}</p>
+                  ))}
+                  {purgeResult.errors.length > 10 && <p>...and {purgeResult.errors.length - 10} more errors</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Medicare Mode Results ── */}
