@@ -836,6 +836,7 @@ export async function getUnreconciledBankTransactions(
 /**
  * Fetch ALL bank deposits (receive transactions) for an account, including reconciled.
  * Used by Medicare mode to show full picture even when deposits are already reconciled.
+ * Fetches RECEIVE and RECEIVE-TRANSFER types (manual transfers show as RECEIVE-TRANSFER).
  */
 export async function getAllBankDeposits(
   accountId: string,
@@ -843,7 +844,8 @@ export async function getAllBankDeposits(
   toDate: string
 ): Promise<(BankDeposit & { isReconciled: boolean })[]> {
   const headers = await xeroHeaders()
-  const where = buildBankTxnWhere(accountId, fromDate, toDate, ['Type=="RECEIVE"'])
+  // Fetch all bank txns for the account — filter to deposits (positive amounts) after
+  const where = buildBankTxnWhere(accountId, fromDate, toDate)
   const url = `${XERO_API_BASE}/BankTransactions?where=${encodeURIComponent(where)}`
 
   const res = await fetch(url, { headers })
@@ -853,13 +855,19 @@ export async function getAllBankDeposits(
   const data = await res.json()
   const txns: Array<Record<string, unknown>> = data.BankTransactions ?? []
 
-  return txns.map((t) => ({
-    bankTransactionId: t.BankTransactionID as string,
-    date: (t.Date as string).slice(0, 10),
-    amount: Number(t.Total ?? 0),
-    reference: (t.Reference as string) ?? '',
-    isReconciled: t.IsReconciled as boolean,
-  }))
+  return txns
+    .filter((t) => {
+      const type = ((t.Type as string) ?? '').toUpperCase()
+      // Include RECEIVE (bank feed deposits) and RECEIVE-TRANSFER (manual transfers in)
+      return type === 'RECEIVE' || type === 'RECEIVE-TRANSFER' || type === 'RECEIVE-OVERPAYMENT'
+    })
+    .map((t) => ({
+      bankTransactionId: t.BankTransactionID as string,
+      date: parseXeroDate(t.Date),
+      amount: Number(t.Total ?? 0),
+      reference: (t.Reference as string) ?? '',
+      isReconciled: t.IsReconciled as boolean,
+    }))
 }
 
 /**

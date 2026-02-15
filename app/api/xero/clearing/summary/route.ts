@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/xero/auth'
 import {
   getUnreconciledBankTransactions,
+  getAllBankDeposits,
   getClearingTransactions,
   getAccountPayments,
   suggestGroupings,
   reconcileThreeWay,
+  reconcileMedicare,
 } from '@/lib/xero/client'
 import type {
   ClearingSummaryResponse,
@@ -267,27 +269,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(resp)
     }
 
-    // ── Medicare mode: fetch clearing payments for manual deposit matching ──
-    // Returns all patient payments from Halaxy via Xero Payments API.
-    // The UI does client-side subset-sum matching against user-entered deposit amounts
-    // because Medicare deposits are bank feed statement lines that can't be fetched via API.
+    // ── Medicare mode: savings account batch reconciliation ──
+    // Fetches clearing payments (Payments API) and savings deposits (BankTransactions API).
+    // Runs subset-sum matching to find which patient payments group into each Medicare deposit.
+    // Also returns raw clearing entries so the UI can do client-side matching for
+    // deposits that aren't in the API yet (unreconciled bank feed statement lines).
     if (modeParam === 'medicare') {
-      const clearingPayments = await getAccountPayments(clearingAccountId, fromDate, toDate)
+      const savingsAccountId = process.env.XERO_SAVINGS_ACCOUNT_ID
+      if (!savingsAccountId) {
+        return NextResponse.json(
+          { error: 'XERO_SAVINGS_ACCOUNT_ID env var is required for Medicare mode' },
+          { status: 500 }
+        )
+      }
 
-      // Filter to positive amounts only, exclude transfers
-      const patientPayments = clearingPayments.filter((t) => {
-        const type = (t.txnType ?? '').toUpperCase()
-        if (type.includes('TRANSFER')) return false
-        return t.amount > 0
-      })
+      const toleranceCents = Number(searchParams.get('tolerance') ?? 200)
 
-      return NextResponse.json({
-        clearingEntries: patientPayments,
-        totalAmount: Math.round(patientPayments.reduce((s, t) => s + t.amount, 0) * 100) / 100,
-        entryCount: patientPayments.length,
-        fromDate,
-        toDate,
-      })
+      // Fetch clearing payments (via Payments API — Halaxy creates Payments, not BankTransactions)
+      // AND savings deposits (BankTransactions API — includes reconciled deposits)
+      const [savingsDeposits, clearingPayments] = await Promise.all([
+        getAllBankDeposits(savingsAccountId, fromDate, toDate),
+        getAccountPayments(clearingAccountId, fromDate, toDate),
+      ])
+
+      // Run automatic subset-sum matching
+      const result = reconcileMedicare(clearingPayments, savingsDeposits, toleranceCents)
+
+      return NextResponse.json(result)
     }
 
     // ── Three-way matching mode ──
