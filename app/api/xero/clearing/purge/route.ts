@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/xero/auth'
 import { purgeAccountBefore } from '@/lib/xero/client'
 
+export const maxDuration = 60
+
 /**
  * POST /api/xero/clearing/purge
  * Purge old entries from a Xero bank account before a cutoff date.
