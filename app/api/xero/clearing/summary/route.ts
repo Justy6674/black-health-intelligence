@@ -20,7 +20,6 @@ import {
   getPaymentTransactions,
   enrichPaymentsWithInvoices,
   getBraintreePayments,
-  getMedicarePayments,
 } from '@/lib/halaxy/client'
 import type { HalaxyPayment } from '@/lib/halaxy/types'
 
@@ -269,14 +268,9 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Medicare mode: savings account batch reconciliation ──
+    // Subset-sum matches clearing RECEIVE entries against savings deposits.
+    // No Halaxy needed — works purely from Xero clearing + savings data.
     if (modeParam === 'medicare') {
-      if (!halaxyConfigured) {
-        return NextResponse.json(
-          { error: 'Halaxy credentials not configured — Medicare mode requires Halaxy' },
-          { status: 400 }
-        )
-      }
-
       const savingsAccountId = process.env.XERO_SAVINGS_ACCOUNT_ID
       if (!savingsAccountId) {
         return NextResponse.json(
@@ -285,17 +279,14 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      const [savingsDeposits, clearingTxns, medicarePayments] = await Promise.all([
+      const toleranceCents = Number(searchParams.get('tolerance') ?? 200)
+
+      const [savingsDeposits, clearingTxns] = await Promise.all([
         getUnreconciledBankTransactions(savingsAccountId, fromDate, toDate),
         getClearingTransactions(clearingAccountId, fromDate, toDate),
-        getMedicarePayments(fromDate, toDate),
       ])
 
-      const result: ReconciliationResult = reconcileMedicare(
-        medicarePayments,
-        clearingTxns,
-        savingsDeposits
-      )
+      const result = reconcileMedicare(clearingTxns, savingsDeposits, toleranceCents)
 
       return NextResponse.json(result)
     }

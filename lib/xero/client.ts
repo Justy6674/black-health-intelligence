@@ -860,6 +860,7 @@ export async function getClearingTransactions(
       amount: Number(t.Total ?? 0),
       invoiceNumber: (t.Reference as string) ?? '',
       reference: (t.Reference as string) ?? '',
+      txnType: (t.Type as string) ?? undefined,
       contactName: (contact?.Name as string) ?? undefined,
     }
   })
@@ -1366,242 +1367,107 @@ export function reconcileThreeWay(
 }
 
 /**
- * Three-way matching for Medicare/DVA payments.
+ * Medicare/DVA savings-account reconciliation using subset-sum matching.
  *
- * Key difference from Braintree: Medicare deposits are BATCHED — one savings
- * account deposit covers multiple patients. So we:
- *  1. Match individual Halaxy Medicare payments → clearing entries (by invoice #)
- *  2. Group matched clearing entries by date
- *  3. Match each date-group total against a savings account deposit
- *  4. All items in a matched group share the same bankDeposit reference
+ * Medicare batches multiple patient payments into single deposits 2-3x/week.
+ * Individual patient amounts ($27.05, $51.25, $75.60) sum to one deposit ($153.90).
  *
- * When reconciling, create ONE bank transfer per deposit (batch total),
- * not per individual clearing entry.
+ * Algorithm:
+ *  1. Filter clearing txns to RECEIVE only (exclude bank transfers/spends)
+ *  2. Use subset-sum backtracking to find which clearing entries sum to each deposit
+ *  3. Return grouped matches — one bank transfer per deposit when reconciling
+ *
+ * Uses the same findBestSubsetMatch algorithm as legacy mode.
  */
+export interface MedicareBatchMatch {
+  deposit: BankDeposit
+  clearingEntries: ClearingTransaction[]
+  total: number
+  difference: number
+  isExactMatch: boolean
+}
+
+export interface MedicareReconciliationResult {
+  batchMatches: MedicareBatchMatch[]
+  unmatchedDeposits: BankDeposit[]
+  unmatchedClearing: ClearingTransaction[]
+  clearingBalance: number
+  stats: {
+    totalDeposits: number
+    matchedDeposits: number
+    unmatchedDeposits: number
+    totalClearingEntries: number
+    matchedClearingEntries: number
+    unmatchedClearingEntries: number
+    readyAmount: number
+    totalClearingAmount: number
+  }
+}
+
 export function reconcileMedicare(
-  halaxyPayments: HalaxyPayment[],
   clearingTxns: ClearingTransaction[],
-  savingsDeposits: BankDeposit[]
-): ReconciliationResult {
-  const matches: ThreeWayMatch[] = []
-  const usedClearing = new Set<string>()
-  const usedDeposits = new Set<string>()
-  const usedHalaxy = new Set<string>()
-
-  // Index clearing transactions by invoice number (reference field)
-  const clearingByRef = new Map<string, ClearingTransaction[]>()
-  for (const txn of clearingTxns) {
-    const ref = (txn.reference || txn.invoiceNumber || '').toUpperCase().trim()
-    if (ref) {
-      const list = clearingByRef.get(ref) ?? []
-      list.push(txn)
-      clearingByRef.set(ref, list)
-    }
-  }
-
-  // Phase 1: Match individual Halaxy Medicare payments → clearing entries
-  const medicarePayments = halaxyPayments.filter(
-    (p) => p.type === 'Payment'
-  )
-
-  const matchedPairs: Array<{
-    halaxy: HalaxyPayment
-    clearing: ClearingTransaction | null
-    matchMethod: 'invoice_number' | 'amount_date' | 'unmatched'
-  }> = []
-
-  for (const payment of medicarePayments) {
-    if (usedHalaxy.has(payment.id)) continue
-
-    const invoiceNum = (payment.invoiceNumber ?? '').toUpperCase().trim()
-    const amountCents = Math.round(payment.amount * 100)
-
-    // Match by invoice number
-    let clearingMatch: ClearingTransaction | null = null
-    let method: 'invoice_number' | 'amount_date' | 'unmatched' = 'unmatched'
-
-    if (invoiceNum) {
-      const candidates = clearingByRef.get(invoiceNum) ?? []
-      clearingMatch = candidates.find((c) => !usedClearing.has(c.transactionId)) ?? null
-      if (clearingMatch) method = 'invoice_number'
-    }
-
-    // Fallback: match by amount + date (±1 day)
-    if (!clearingMatch) {
-      const paymentDate = payment.created.slice(0, 10)
-      for (const txn of clearingTxns) {
-        if (usedClearing.has(txn.transactionId)) continue
-        if (Math.round(txn.amount * 100) !== amountCents) continue
-        const dayDiff = Math.abs(
-          new Date(txn.date).getTime() - new Date(paymentDate).getTime()
-        ) / (1000 * 60 * 60 * 24)
-        if (dayDiff <= 1) {
-          clearingMatch = txn
-          method = 'amount_date'
-          break
-        }
-      }
-    }
-
-    usedHalaxy.add(payment.id)
-    if (clearingMatch) usedClearing.add(clearingMatch.transactionId)
-
-    matchedPairs.push({ halaxy: payment, clearing: clearingMatch, matchMethod: method })
-  }
-
-  // Phase 2: Group matched clearing entries by date for batch deposit matching
-  const clearingByDate = new Map<string, Array<typeof matchedPairs[number]>>()
-  for (const pair of matchedPairs) {
-    if (!pair.clearing) continue
-    const date = pair.clearing.date
-    const list = clearingByDate.get(date) ?? []
-    list.push(pair)
-    clearingByDate.set(date, list)
-  }
-
-  // Phase 3: Match date-group totals against savings deposits
-  const depositMatches = new Map<string, BankDeposit>() // clearing date → deposit
-  const TOLERANCE_CENTS = 5 // allow $0.05 rounding tolerance
-
-  for (const [date, pairs] of clearingByDate) {
-    const groupTotal = pairs.reduce((s, p) => s + (p.clearing?.amount ?? 0), 0)
-    const groupCents = Math.round(groupTotal * 100)
-
-    // Find a savings deposit matching this batch total (±7 days for Medicare processing)
-    let bestMatch: BankDeposit | null = null
-    let bestDayDiff = Infinity
-
-    for (const dep of savingsDeposits) {
-      if (usedDeposits.has(dep.bankTransactionId)) continue
-      const depCents = Math.round(dep.amount * 100)
-      if (Math.abs(depCents - groupCents) > TOLERANCE_CENTS) continue
-
-      const dayDiff = Math.abs(
-        new Date(dep.date).getTime() - new Date(date).getTime()
-      ) / (1000 * 60 * 60 * 24)
-      // Medicare can take up to 7 days to settle
-      if (dayDiff <= 7 && dayDiff < bestDayDiff) {
-        bestMatch = dep
-        bestDayDiff = dayDiff
-      }
-    }
-
-    if (bestMatch) {
-      usedDeposits.add(bestMatch.bankTransactionId)
-      depositMatches.set(date, bestMatch)
-    }
-  }
-
-  // Phase 4: Build final matches
-  for (const pair of matchedPairs) {
-    const { halaxy, clearing, matchMethod } = pair
-
-    let status: ThreeWayMatchStatus
-    let bankDeposit: BankDeposit | null = null
-
-    if (!clearing) {
-      status = 'sync_failed'
-    } else {
-      bankDeposit = depositMatches.get(clearing.date) ?? null
-      status = bankDeposit ? 'matched' : 'awaiting_deposit'
-    }
-
-    matches.push({
-      halaxyPayment: {
-        id: halaxy.id,
-        created: halaxy.created,
-        method: halaxy.method,
-        type: halaxy.type,
-        amount: halaxy.amount,
-        invoiceId: halaxy.invoiceId,
-        invoiceNumber: halaxy.invoiceNumber,
-        patientName: halaxy.patientName,
-      },
-      clearingTxn: clearing,
-      bankDeposit,
-      invoiceNumber: halaxy.invoiceNumber ?? clearing?.invoiceNumber ?? '',
-      patientName: halaxy.patientName ?? clearing?.contactName ?? '',
-      amount: halaxy.amount,
-      date: halaxy.created.slice(0, 10),
-      status,
-      matchMethod,
-    })
-  }
-
-  // Phase 5: Unmatched clearing entries (no Halaxy payment — manual entries)
-  for (const txn of clearingTxns) {
-    if (usedClearing.has(txn.transactionId)) continue
-    usedClearing.add(txn.transactionId)
-
-    const bankDeposit = depositMatches.get(txn.date) ?? null
-
-    matches.push({
-      halaxyPayment: null,
-      clearingTxn: txn,
-      bankDeposit,
-      invoiceNumber: txn.invoiceNumber || txn.reference,
-      patientName: txn.contactName ?? '',
-      amount: txn.amount,
-      date: txn.date,
-      status: 'manual_entry',
-      matchMethod: 'unmatched',
-    })
-  }
-
-  // Phase 6: Orphan savings deposits (no clearing match)
-  for (const dep of savingsDeposits) {
-    if (usedDeposits.has(dep.bankTransactionId)) continue
-    usedDeposits.add(dep.bankTransactionId)
-
-    matches.push({
-      halaxyPayment: null,
-      clearingTxn: null,
-      bankDeposit: dep,
-      invoiceNumber: dep.reference || '',
-      patientName: '',
-      amount: dep.amount,
-      date: dep.date,
-      status: 'orphan_deposit',
-      matchMethod: 'unmatched',
-    })
-  }
-
-  // Sort: matched first, then by date descending
-  const statusOrder: Record<ThreeWayMatchStatus, number> = {
-    matched: 0,
-    awaiting_deposit: 1,
-    sync_failed: 2,
-    manual_entry: 3,
-    orphan_deposit: 4,
-  }
-  matches.sort((a, b) => {
-    const so = statusOrder[a.status] - statusOrder[b.status]
-    if (so !== 0) return so
-    return b.date.localeCompare(a.date)
+  savingsDeposits: BankDeposit[],
+  toleranceCents: number = 200 // $2.00 tolerance for rounding
+): MedicareReconciliationResult {
+  // Step 1: Filter clearing to RECEIVE only — these are the actual patient payments.
+  // Exclude SPEND, SPEND-TRANSFER (bank transfers out), RECEIVE-TRANSFER (transfers in).
+  const receiveOnly = clearingTxns.filter((t) => {
+    const type = (t.txnType ?? '').toUpperCase()
+    return type === 'RECEIVE' || type === '' // include if type unknown (backwards compat)
   })
 
-  const stats = {
-    total: matches.length,
-    matched: matches.filter((m) => m.status === 'matched').length,
-    awaitingDeposit: matches.filter((m) => m.status === 'awaiting_deposit').length,
-    syncFailed: matches.filter((m) => m.status === 'sync_failed').length,
-    manualEntry: matches.filter((m) => m.status === 'manual_entry').length,
-    orphanDeposits: matches.filter((m) => m.status === 'orphan_deposit').length,
-    totalAmount: matches.reduce((s, m) => s + m.amount, 0),
-    readyAmount: matches
-      .filter((m) => m.status === 'matched')
-      .reduce((s, m) => s + m.amount, 0),
+  // Step 2: Use subset-sum matching — find which clearing entries sum to each deposit
+  const used = new Set<string>()
+  const batchMatches: MedicareBatchMatch[] = []
+  const unmatchedDeposits: BankDeposit[] = []
+
+  // Sort deposits by date (oldest first) for deterministic matching
+  const sortedDeposits = [...savingsDeposits].sort(
+    (a, b) => a.date.localeCompare(b.date)
+  )
+
+  for (const dep of sortedDeposits) {
+    const targetCents = Math.round(dep.amount * 100)
+    const available = receiveOnly.filter((c) => !used.has(c.transactionId))
+    const result = findBestSubsetMatch(available, targetCents, toleranceCents)
+
+    if (result) {
+      result.subset.forEach((c) => used.add(c.transactionId))
+      const total = result.subset.reduce((s, c) => s + c.amount, 0)
+      const totalRounded = Math.round(total * 100) / 100
+      const diff = Math.round((dep.amount - total) * 100) / 100
+
+      batchMatches.push({
+        deposit: dep,
+        clearingEntries: result.subset,
+        total: totalRounded,
+        difference: diff,
+        isExactMatch: Math.abs(result.diffCents) === 0,
+      })
+    } else {
+      unmatchedDeposits.push(dep)
+    }
   }
 
-  const clearingBalance = clearingTxns.reduce((s, t) => s + t.amount, 0)
-  const expectedBalance = clearingBalance - stats.readyAmount
+  const unmatchedClearing = receiveOnly.filter((c) => !used.has(c.transactionId))
+  const clearingBalance = receiveOnly.reduce((s, t) => s + t.amount, 0)
+  const readyAmount = batchMatches.reduce((s, m) => s + m.deposit.amount, 0)
 
   return {
-    matches,
-    stats,
+    batchMatches,
+    unmatchedDeposits,
+    unmatchedClearing,
     clearingBalance: Math.round(clearingBalance * 100) / 100,
-    expectedBalance: Math.round(expectedBalance * 100) / 100,
-    threeWayMode: true,
+    stats: {
+      totalDeposits: savingsDeposits.length,
+      matchedDeposits: batchMatches.length,
+      unmatchedDeposits: unmatchedDeposits.length,
+      totalClearingEntries: receiveOnly.length,
+      matchedClearingEntries: receiveOnly.length - unmatchedClearing.length,
+      unmatchedClearingEntries: unmatchedClearing.length,
+      readyAmount: Math.round(readyAmount * 100) / 100,
+      totalClearingAmount: Math.round(clearingBalance * 100) / 100,
+    },
   }
 }
 

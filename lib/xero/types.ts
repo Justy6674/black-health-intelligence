@@ -67,6 +67,8 @@ export interface ClearingTransaction {
   amount: number
   invoiceNumber: string
   reference: string
+  /** Xero transaction type: RECEIVE, SPEND, RECEIVE-TRANSFER, SPEND-TRANSFER, etc. */
+  txnType?: string
   /** Contact name from Xero (patient name when Halaxy synced) */
   contactName?: string
   // Halaxy enrichment (optional — populated when Halaxy is configured)
