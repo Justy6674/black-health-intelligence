@@ -862,6 +862,50 @@ export async function getAllBankDeposits(
 }
 
 /**
+ * Fetch invoice PAYMENTS on a bank account (e.g. clearing account).
+ * This is different from BankTransactions — Halaxy creates Payments (against invoices),
+ * NOT standalone BankTransactions. The Payments API returns actual patient payment data
+ * including invoice number and contact (patient) name.
+ */
+export async function getAccountPayments(
+  accountId: string,
+  fromDate: string,
+  toDate: string
+): Promise<ClearingTransaction[]> {
+  const headers = await xeroHeaders()
+  const from = fromDate.replace(/-/g, ',')
+  const to = toDate.replace(/-/g, ',')
+  const where = [
+    `Account.AccountID=guid("${accountId}")`,
+    `Date>=DateTime(${from})`,
+    `Date<=DateTime(${to})`,
+    `Status=="AUTHORISED"`,
+  ].join(' AND ')
+  const url = `${XERO_API_BASE}/Payments?where=${encodeURIComponent(where)}&order=Date%20DESC`
+
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    throw new Error(`Xero Payments ${res.status}: ${await res.text()}`)
+  }
+  const data = await res.json()
+  const payments: Array<Record<string, unknown>> = data.Payments ?? []
+
+  return payments.map((p) => {
+    const invoice = p.Invoice as Record<string, unknown> | undefined
+    const contact = invoice?.Contact as Record<string, unknown> | undefined
+    return {
+      transactionId: p.PaymentID as string,
+      date: parseXeroDate(p.Date),
+      amount: Number(p.Amount ?? 0),
+      invoiceNumber: (invoice?.InvoiceNumber as string) ?? '',
+      reference: (p.Reference as string) ?? (invoice?.InvoiceNumber as string) ?? '',
+      txnType: 'PAYMENT',
+      contactName: (contact?.Name as string) ?? undefined,
+    }
+  })
+}
+
+/**
  * Fetch clearing‑account transactions for a period.
  * Returns Contact name when available (for patient identification).
  */

@@ -4,6 +4,7 @@ import {
   getUnreconciledBankTransactions,
   getAllBankDeposits,
   getClearingTransactions,
+  getAccountPayments,
   suggestGroupings,
   reconcileThreeWay,
   reconcileMedicare,
@@ -283,13 +284,14 @@ export async function GET(request: NextRequest) {
       const toleranceCents = Number(searchParams.get('tolerance') ?? 200)
 
       // Fetch ALL savings deposits (including reconciled) so we can show the full picture.
-      // Already-reconciled deposits are flagged so the UI knows not to create duplicate transfers.
-      const [savingsDeposits, clearingTxns] = await Promise.all([
+      // For clearing: fetch PAYMENTS (invoice payments from Halaxy) — these are different
+      // from BankTransactions. Halaxy creates Payments against invoices, not standalone txns.
+      const [savingsDeposits, clearingPayments] = await Promise.all([
         getAllBankDeposits(savingsAccountId, fromDate, toDate),
-        getClearingTransactions(clearingAccountId, fromDate, toDate),
+        getAccountPayments(clearingAccountId, fromDate, toDate),
       ])
 
-      const result = reconcileMedicare(clearingTxns, savingsDeposits, toleranceCents)
+      const result = reconcileMedicare(clearingPayments, savingsDeposits, toleranceCents)
 
       return NextResponse.json(result)
     }
