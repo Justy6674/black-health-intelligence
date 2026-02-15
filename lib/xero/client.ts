@@ -14,12 +14,13 @@ const VOID_BATCH_SIZE = 25 // Xero recommends ~50; smaller batches isolate bad i
 const BATCH_DELAY_MS = 1500 // respect Xero rate limits
 const VOID_BATCH_DELAY_MS = 2000 // void-only delay to stay under 60/min
 
-/** Parse Xero date: ISO string or .NET /Date(ms)/ format */
+/** Parse Xero date: ISO string or .NET /Date(ms+offset)/ format */
 function parseXeroDate(val: unknown): string {
   if (!val || typeof val !== 'string') return ''
   const s = String(val).trim()
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
-  const m = s.match(/\/Date\((\d+)\)\//)
+  // Match /Date(1738368000000)/ or /Date(1738368000000+0000)/ — with or without trailing slash
+  const m = s.match(/\/Date\((\d+)([+-]\d+)?\)\/?/)
   if (m) {
     const d = new Date(parseInt(m[1], 10))
     return d.toISOString().slice(0, 10)

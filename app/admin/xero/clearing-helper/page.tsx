@@ -16,11 +16,91 @@ import type {
   GuideDaySummary,
   GuidePayment,
 } from '@/lib/xero/types'
-import type { MedicareReconciliationResult, MedicareBatchMatch } from '@/lib/xero/client'
-
 // ── Types ──
 
 type ViewMode = 'threeway' | 'legacy' | 'guide' | 'medicare'
+
+/** API response for Medicare mode — just clearing entries, no deposit matching */
+interface MedicareApiResponse {
+  clearingEntries: ClearingTransaction[]
+  totalAmount: number
+  entryCount: number
+  fromDate: string
+  toDate: string
+}
+
+/** A matched deposit group found by client-side subset-sum */
+interface MedicareDepositMatch {
+  depositAmount: number
+  entries: ClearingTransaction[]
+  total: number
+  difference: number
+  isExact: boolean
+}
+
+// ── Client-side subset-sum matching ──
+// Runs entirely in the browser — no API call needed for matching
+
+function findSubsetMatch(
+  txns: ClearingTransaction[],
+  targetCents: number,
+  toleranceCents: number
+): { subset: ClearingTransaction[]; diffCents: number } | null {
+  if (txns.length === 0) return null
+
+  const sorted = [...txns].sort((a, b) => b.amount - a.amount)
+  const centAmounts = sorted.map((t) => Math.round(t.amount * 100))
+
+  // Precompute suffix sums for pruning
+  const suffixSums = new Array<number>(sorted.length + 1)
+  suffixSums[sorted.length] = 0
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    suffixSums[i] = suffixSums[i + 1] + centAmounts[i]
+  }
+
+  const state = { bestSubset: null as number[] | null, bestAbsDiff: Infinity }
+  const current: number[] = []
+  let currentSum = 0
+
+  function backtrack(idx: number): boolean {
+    const diff = currentSum - targetCents
+    const absDiff = Math.abs(diff)
+    if (current.length > 0 && absDiff < state.bestAbsDiff) {
+      state.bestAbsDiff = absDiff
+      state.bestSubset = [...current]
+      if (absDiff === 0) return true
+    }
+
+    if (idx >= sorted.length) return false
+
+    for (let i = idx; i < sorted.length; i++) {
+      const newSum = currentSum + centAmounts[i]
+      if (newSum > targetCents + toleranceCents) continue
+      const remaining = suffixSums[i + 1]
+      if (newSum + remaining < targetCents - toleranceCents) break
+
+      current.push(i)
+      currentSum = newSum
+      if (backtrack(i + 1)) return true
+      current.pop()
+      currentSum -= centAmounts[i]
+    }
+
+    return false
+  }
+
+  backtrack(0)
+
+  const { bestSubset, bestAbsDiff } = state
+  if (!bestSubset || bestAbsDiff > toleranceCents) return null
+
+  return {
+    subset: bestSubset.map((i) => sorted[i]),
+    diffCents: Math.round(
+      bestSubset.reduce((s, i) => s + centAmounts[i], 0) - targetCents
+    ),
+  }
+}
 
 const CLEARING_AUDIT_KEY = 'xero_clearing_history'
 
@@ -120,8 +200,11 @@ export default function ClearingHelperPage() {
   const [guideMethodFilter, setGuideMethodFilter] = useState<'all' | 'Braintree' | 'medicare' | 'other'>('all')
 
   // Medicare mode state
-  const [medicareResult, setMedicareResult] = useState<MedicareReconciliationResult | null>(null)
-  const [medicareSelected, setMedicareSelected] = useState<Set<number>>(new Set()) // indices into batchMatches
+  const [medicareEntries, setMedicareEntries] = useState<ClearingTransaction[]>([])
+  const [medicareTotalAmount, setMedicareTotalAmount] = useState(0)
+  const [medicareDepositInput, setMedicareDepositInput] = useState('')
+  const [medicareMatches, setMedicareMatches] = useState<MedicareDepositMatch[]>([])
+  const [medicareSelectedIndices, setMedicareSelectedIndices] = useState<Set<number>>(new Set())
   const [medicareBatchResult, setMedicareBatchResult] = useState<BatchReconcileResponse | null>(null)
   const [medicareReconciling, setMedicareReconciling] = useState(false)
 
@@ -158,8 +241,10 @@ export default function ClearingHelperPage() {
     setReconciliation(null)
     setLegacySummary(null)
     setGuideData(null)
-    setMedicareResult(null)
-    setMedicareSelected(new Set())
+    setMedicareEntries([])
+    setMedicareTotalAmount(0)
+    setMedicareMatches([])
+    setMedicareSelectedIndices(new Set())
     setMedicareBatchResult(null)
     setSelectedMatches(new Set())
     setBatchResult(null)
@@ -195,16 +280,14 @@ export default function ClearingHelperPage() {
         setGuideData(data)
       } else if (viewMode === 'medicare') {
         params.set('mode', 'medicare')
-        params.set('tolerance', String(Math.round(toleranceDollars * 100)))
         const res = await fetch(`/api/xero/clearing/summary?${params}`)
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           throw new Error(data.error || `Request failed (${res.status})`)
         }
-        const data: MedicareReconciliationResult = await res.json()
-        setMedicareResult(data)
-        // Auto-select all batch matches
-        setMedicareSelected(new Set(data.batchMatches.map((_, i) => i)))
+        const data: MedicareApiResponse = await res.json()
+        setMedicareEntries(data.clearingEntries)
+        setMedicareTotalAmount(data.totalAmount)
       } else {
         params.set('mode', 'legacy')
         params.set('tolerance', String(Math.round(toleranceDollars * 100)))
@@ -298,50 +381,96 @@ export default function ClearingHelperPage() {
     }
   }
 
+  // ── Medicare: add a deposit amount and find matching patient payments ──
+  const addMedicareDeposit = () => {
+    const amount = parseFloat(medicareDepositInput)
+    if (isNaN(amount) || amount <= 0) return
+
+    const targetCents = Math.round(amount * 100)
+    // Exclude entries already used in previous matches
+    const usedIds = new Set(medicareMatches.flatMap((m) => m.entries.map((e) => e.transactionId)))
+    const available = medicareEntries.filter((e) => !usedIds.has(e.transactionId))
+
+    const result = findSubsetMatch(available, targetCents, Math.round(toleranceDollars * 100))
+
+    if (result) {
+      const total = result.subset.reduce((s, c) => s + c.amount, 0)
+      const totalRounded = Math.round(total * 100) / 100
+      const diff = Math.round((amount - total) * 100) / 100
+
+      const match: MedicareDepositMatch = {
+        depositAmount: amount,
+        entries: result.subset,
+        total: totalRounded,
+        difference: diff,
+        isExact: Math.abs(result.diffCents) === 0,
+      }
+
+      const newMatches = [...medicareMatches, match]
+      setMedicareMatches(newMatches)
+      // Auto-select the new match
+      setMedicareSelectedIndices((prev) => new Set([...prev, newMatches.length - 1]))
+    } else {
+      setError(`No combination of patient payments sums to $${amount.toFixed(2)} (tolerance: $${toleranceDollars.toFixed(2)})`)
+    }
+
+    setMedicareDepositInput('')
+  }
+
+  // ── Medicare: remove a deposit match ──
+  const removeMedicareMatch = (idx: number) => {
+    setMedicareMatches((prev) => prev.filter((_, i) => i !== idx))
+    setMedicareSelectedIndices((prev) => {
+      const next = new Set<number>()
+      for (const i of prev) {
+        if (i < idx) next.add(i)
+        else if (i > idx) next.add(i - 1)
+      }
+      return next
+    })
+  }
+
   // ── Medicare batch reconcile ──
-  // Creates ONE bank transfer per deposit (clearing → savings)
+  // Creates ONE bank transfer per matched deposit group (clearing → savings)
   const reconcileMedicareBatches = async () => {
-    if (!medicareResult) return
+    if (medicareMatches.length === 0) return
     setMedicareReconciling(true)
     setError('')
     setMedicareBatchResult(null)
 
-    // Build one transfer per selected batch match
-    const batchTransfers: Array<{
-      invoiceNumber: string
-      clearingTransactionId: string
-      amount: number
-      date: string
-      reference: string
-    }> = []
-
-    for (const idx of medicareSelected) {
-      const batch = medicareResult.batchMatches[idx]
-      if (!batch) continue
-      const patientRefs = batch.clearingEntries
-        .map((c) => c.contactName || c.reference || c.invoiceNumber)
-        .filter(Boolean)
-        .slice(0, 5)
-        .join(', ')
-      batchTransfers.push({
-        invoiceNumber: `Medicare ${batch.deposit.date}`,
-        clearingTransactionId: batch.deposit.bankTransactionId,
-        amount: batch.deposit.amount, // use deposit amount (what actually landed)
-        date: batch.deposit.date,
-        reference: `Medicare batch ${batch.deposit.date} (${batch.clearingEntries.length} items: ${patientRefs})`,
-      })
-    }
-
-    if (batchTransfers.length === 0) {
-      setError('No batches selected')
+    const selected = medicareMatches.filter((_, i) => medicareSelectedIndices.has(i))
+    if (selected.length === 0) {
+      setError('No deposits selected')
       setMedicareReconciling(false)
       return
     }
 
+    // Build one transfer per matched deposit
+    const batchTransfers = selected.map((match) => {
+      const patientRefs = match.entries
+        .map((c) => c.contactName || c.reference || c.invoiceNumber)
+        .filter(Boolean)
+        .slice(0, 5)
+        .join(', ')
+      // Use the earliest date from the matched entries
+      const date = match.entries
+        .map((e) => e.date)
+        .filter(Boolean)
+        .sort()[0] || fromDate
+
+      return {
+        invoiceNumber: `Medicare batch`,
+        clearingTransactionId: match.entries[0]?.transactionId ?? '',
+        amount: match.depositAmount,
+        date,
+        reference: `Medicare $${match.depositAmount.toFixed(2)} (${match.entries.length} patients: ${patientRefs})`,
+      }
+    })
+
     try {
       const body = {
         matches: batchTransfers,
-        medicare: true, // signals API to use XERO_SAVINGS_ACCOUNT_ID
+        medicare: true,
         dryRun,
       }
 
@@ -362,8 +491,8 @@ export default function ClearingHelperPage() {
       saveClearingEntry({
         timestamp: new Date().toISOString(),
         date: fromDate === toDate ? fromDate : `${fromDate}\u2013${toDate}`,
-        amount: batchTransfers.reduce((s, t) => s + t.amount, 0),
-        clearingCount: batchTransfers.length,
+        amount: selected.reduce((s, m) => s + m.depositAmount, 0),
+        clearingCount: selected.length,
         dryRun,
         success: data.failed === 0,
         batchMode: true,
@@ -649,24 +778,32 @@ export default function ClearingHelperPage() {
       )}
 
       {/* ── Medicare Mode Results ── */}
-      {viewMode === 'medicare' && medicareResult && (
+      {viewMode === 'medicare' && medicareEntries.length > 0 && (
         <MedicareView
-          result={medicareResult}
-          selectedIndices={medicareSelected}
+          entries={medicareEntries}
+          totalAmount={medicareTotalAmount}
+          depositInput={medicareDepositInput}
+          matches={medicareMatches}
+          selectedIndices={medicareSelectedIndices}
+          toleranceDollars={toleranceDollars}
           dryRun={dryRun}
           reconciling={medicareReconciling}
           batchResult={medicareBatchResult}
-          onToggleBatch={(idx) => {
-            setMedicareSelected((prev) => {
+          onDepositInputChange={setMedicareDepositInput}
+          onAddDeposit={addMedicareDeposit}
+          onRemoveMatch={removeMedicareMatch}
+          onToggleSelect={(idx) => {
+            setMedicareSelectedIndices((prev) => {
               const next = new Set(prev)
               if (next.has(idx)) next.delete(idx)
               else next.add(idx)
               return next
             })
           }}
-          onSelectAll={() => setMedicareSelected(new Set(medicareResult.batchMatches.map((_, i) => i)))}
-          onDeselectAll={() => setMedicareSelected(new Set())}
+          onSelectAll={() => setMedicareSelectedIndices(new Set(medicareMatches.map((_, i) => i)))}
+          onDeselectAll={() => setMedicareSelectedIndices(new Set())}
           onReconcile={reconcileMedicareBatches}
+          onToleranceChange={setToleranceDollars}
         />
       )}
 
@@ -1146,288 +1283,295 @@ function StatusBadge({
 // ══════════════════════════════════════════
 
 function MedicareView({
-  result,
+  entries,
+  totalAmount,
+  depositInput,
+  matches,
   selectedIndices,
+  toleranceDollars,
   dryRun,
   reconciling,
   batchResult,
-  onToggleBatch,
+  onDepositInputChange,
+  onAddDeposit,
+  onRemoveMatch,
+  onToggleSelect,
   onSelectAll,
   onDeselectAll,
   onReconcile,
+  onToleranceChange,
 }: {
-  result: MedicareReconciliationResult
+  entries: ClearingTransaction[]
+  totalAmount: number
+  depositInput: string
+  matches: MedicareDepositMatch[]
   selectedIndices: Set<number>
+  toleranceDollars: number
   dryRun: boolean
   reconciling: boolean
   batchResult: BatchReconcileResponse | null
-  onToggleBatch: (idx: number) => void
+  onDepositInputChange: (val: string) => void
+  onAddDeposit: () => void
+  onRemoveMatch: (idx: number) => void
+  onToggleSelect: (idx: number) => void
   onSelectAll: () => void
   onDeselectAll: () => void
   onReconcile: () => void
+  onToleranceChange: (val: number) => void
 }) {
-  const { stats, batchMatches, unmatchedDeposits, unmatchedClearing } = result
-  // Only count unreconciled batches as actionable
-  const actionableBatches = batchMatches.filter((b) => !b.deposit.isReconciled)
-  const reconciledBatches = batchMatches.filter((b) => b.deposit.isReconciled)
-  const selectedCount = [...selectedIndices].filter(
-    (i) => batchMatches[i] && !batchMatches[i].deposit.isReconciled
-  ).length
-  const selectedAmount = [...selectedIndices]
-    .filter((i) => batchMatches[i] && !batchMatches[i].deposit.isReconciled)
-    .reduce((s, i) => s + (batchMatches[i]?.deposit.amount ?? 0), 0)
+  // Calculate which entries are already used in matches
+  const usedIds = new Set(matches.flatMap((m) => m.entries.map((e) => e.transactionId)))
+  const availableEntries = entries.filter((e) => !usedIds.has(e.transactionId))
+  const matchedAmount = matches.reduce((s, m) => s + m.total, 0)
+  const selectedCount = [...selectedIndices].length
+  const selectedAmount = [...selectedIndices].reduce(
+    (s, i) => s + (matches[i]?.depositAmount ?? 0),
+    0
+  )
 
   return (
     <>
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <SummaryCard
-          label="Clearing Payments"
-          value={`$${stats.totalClearingAmount.toFixed(2)}`}
-          sublabel={`${stats.totalClearingEntries} entries (${stats.excludedTransferCount} transfers excluded)`}
+          label="Patient Payments"
+          value={`$${totalAmount.toFixed(2)}`}
+          sublabel={`${entries.length} entries from clearing`}
           colour="text-white"
         />
         <SummaryCard
-          label="Matched Batches"
-          value={`${stats.matchedDeposits} of ${stats.totalDeposits}`}
-          sublabel={`$${stats.readyAmount.toFixed(2)} ready to reconcile`}
-          colour="text-green-400"
+          label="Matched"
+          value={`$${matchedAmount.toFixed(2)}`}
+          sublabel={`${matches.length} deposit${matches.length !== 1 ? 's' : ''} matched`}
+          colour={matches.length > 0 ? 'text-green-400' : 'text-silver-400'}
         />
         <SummaryCard
-          label="Already Done"
-          value={String(stats.alreadyReconciledDeposits)}
-          sublabel="Savings deposits already reconciled"
+          label="Available"
+          value={`${availableEntries.length}`}
+          sublabel={`$${availableEntries.reduce((s, e) => s + e.amount, 0).toFixed(2)} unmatched`}
           colour="text-cyan-400"
         />
         <SummaryCard
-          label="Unmatched Deposits"
-          value={String(stats.unmatchedDeposits)}
-          sublabel="No matching clearing group"
-          colour={stats.unmatchedDeposits > 0 ? 'text-yellow-400' : 'text-silver-400'}
-        />
-        <SummaryCard
-          label="Unmatched Clearing"
-          value={String(stats.unmatchedClearingEntries)}
-          sublabel="Not part of any batch"
-          colour={stats.unmatchedClearingEntries > 0 ? 'text-amber-400' : 'text-silver-400'}
+          label="Tolerance"
+          value={`$${toleranceDollars.toFixed(2)}`}
+          sublabel="Max difference allowed"
+          colour="text-silver-400"
         />
       </div>
 
-      {/* Info banner */}
+      {/* Deposit entry input */}
       <div className="card mb-6 border-cyan-500/30 bg-cyan-900/10">
-        <p className="text-sm text-cyan-300">
-          Subset-sum matching: finds which individual patient payments add up to each Medicare deposit.
-          One bank transfer per deposit (clearing &rarr; savings).
+        <h3 className="text-sm font-semibold text-cyan-300 mb-2">
+          Enter Medicare Deposit Amount
+        </h3>
+        <p className="text-xs text-silver-400 mb-3">
+          Open your Xero savings account reconciliation screen. Enter each Medicare deposit amount below
+          and the tool will find which patient payments add up to it.
         </p>
-        {result.clearingTxnTypes.length > 0 && (
-          <p className="text-xs text-silver-500 mt-1">
-            Clearing txn types found: {result.clearingTxnTypes.join(', ')}
-          </p>
-        )}
-      </div>
-
-      {/* Already reconciled info */}
-      {reconciledBatches.length > 0 && (
-        <div className="card mb-6 border-cyan-500/20 bg-cyan-900/5">
-          <h3 className="text-sm font-semibold text-cyan-400 mb-2">
-            Already Reconciled ({reconciledBatches.length} batches)
-          </h3>
-          <p className="text-xs text-silver-400 mb-2">
-            These savings deposits are already reconciled in Xero. No action needed.
-          </p>
-          <div className="space-y-1 max-h-32 overflow-y-auto">
-            {reconciledBatches.map((batch) => (
-              <div key={batch.deposit.bankTransactionId} className="text-xs font-mono text-silver-400 flex items-center gap-2">
-                <span className="text-green-500">&#10003;</span>
-                <span>${batch.deposit.amount.toFixed(2)}</span>
-                <span className="text-silver-600">&mdash;</span>
-                <span>{batch.deposit.date}</span>
-                <span className="text-silver-600">&mdash;</span>
-                <span>{batch.clearingEntries.length} patients</span>
-                <span className="text-silver-600">&mdash;</span>
-                <span>{batch.clearingEntries.map((c) => c.contactName || c.reference).filter(Boolean).slice(0, 3).join(', ')}</span>
-              </div>
-            ))}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-silver-400 text-sm">$</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={depositInput}
+              onChange={(e) => onDepositInputChange(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onAddDeposit()}
+              placeholder="153.90"
+              className="bg-charcoal border border-silver-700/30 rounded px-3 py-2 text-white text-sm font-mono w-32"
+            />
           </div>
-        </div>
-      )}
-
-      {/* Batch Actions */}
-      <div className="card mb-6">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onSelectAll}
-              className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
-            >
-              Select all
-            </button>
-            <button
-              onClick={onDeselectAll}
-              className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
-            >
-              Deselect all
-            </button>
-          </div>
-
           <button
-            onClick={onReconcile}
-            disabled={reconciling || selectedCount === 0}
-            className="ml-auto px-4 py-2 bg-cyan-700 text-white text-sm font-medium rounded hover:bg-cyan-600 disabled:opacity-50 transition-colors"
+            onClick={onAddDeposit}
+            disabled={!depositInput || isNaN(parseFloat(depositInput))}
+            className="px-4 py-2 bg-cyan-700 text-white text-sm font-medium rounded hover:bg-cyan-600 disabled:opacity-50 transition-colors"
           >
-            {reconciling
-              ? 'Reconciling\u2026'
-              : dryRun
-                ? `Preview ${selectedCount} batch${selectedCount !== 1 ? 'es' : ''} ($${selectedAmount.toFixed(2)}) \u2192 Savings`
-                : `Reconcile ${selectedCount} batch${selectedCount !== 1 ? 'es' : ''} ($${selectedAmount.toFixed(2)}) \u2192 Savings`}
+            Find Match
           </button>
+          <div className="flex items-center gap-2 ml-4">
+            <label className="text-silver-400 text-xs">Tolerance</label>
+            <input
+              type="range"
+              min={0}
+              max={20}
+              step={0.5}
+              value={toleranceDollars}
+              onChange={(e) => onToleranceChange(Number(e.target.value))}
+              className="w-20 accent-cyan-500"
+            />
+            <span className="text-white text-xs font-mono w-12">
+              ${toleranceDollars.toFixed(2)}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Batch result */}
-      {batchResult && (
-        <div
-          className={`card mb-6 border ${
-            batchResult.failed === 0
-              ? 'border-green-500/40 bg-green-900/10'
-              : 'border-red-500/40 bg-red-900/10'
-          }`}
-        >
-          <h3 className="text-sm font-semibold text-white mb-2">
-            {batchResult.dryRun ? 'Dry Run Result' : 'Reconciliation Result'}
-          </h3>
-          <div className="text-sm text-silver-300">
-            <p>
-              Batches: {batchResult.total} | Succeeded: {batchResult.succeeded} | Failed:{' '}
-              {batchResult.failed}
-            </p>
+      {/* Matched deposit groups */}
+      {matches.length > 0 && (
+        <>
+          {/* Batch Actions */}
+          <div className="card mb-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onSelectAll}
+                  className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
+                >
+                  Select all
+                </button>
+                <button
+                  onClick={onDeselectAll}
+                  className="px-2 py-1 text-xs text-silver-300 hover:text-white transition-colors"
+                >
+                  Deselect all
+                </button>
+              </div>
+
+              <button
+                onClick={onReconcile}
+                disabled={reconciling || selectedCount === 0}
+                className="ml-auto px-4 py-2 bg-cyan-700 text-white text-sm font-medium rounded hover:bg-cyan-600 disabled:opacity-50 transition-colors"
+              >
+                {reconciling
+                  ? 'Reconciling\u2026'
+                  : dryRun
+                    ? `Preview ${selectedCount} transfer${selectedCount !== 1 ? 's' : ''} ($${selectedAmount.toFixed(2)}) \u2192 Savings`
+                    : `Reconcile ${selectedCount} transfer${selectedCount !== 1 ? 's' : ''} ($${selectedAmount.toFixed(2)}) \u2192 Savings`}
+              </button>
+            </div>
           </div>
-          {batchResult.results.some((r) => !r.success) && (
-            <div className="mt-2 space-y-1">
-              {batchResult.results
-                .filter((r) => !r.success)
-                .map((r, i) => (
-                  <div key={i} className="text-xs text-red-400">
-                    {r.invoiceNumber}: {r.message}
-                  </div>
-                ))}
+
+          {/* Batch result */}
+          {batchResult && (
+            <div
+              className={`card mb-4 border ${
+                batchResult.failed === 0
+                  ? 'border-green-500/40 bg-green-900/10'
+                  : 'border-red-500/40 bg-red-900/10'
+              }`}
+            >
+              <h3 className="text-sm font-semibold text-white mb-2">
+                {batchResult.dryRun ? 'Dry Run Result' : 'Reconciliation Result'}
+              </h3>
+              <div className="text-sm text-silver-300">
+                <p>
+                  Transfers: {batchResult.total} | Succeeded: {batchResult.succeeded} | Failed:{' '}
+                  {batchResult.failed}
+                </p>
+              </div>
+              {batchResult.results.some((r) => !r.success) && (
+                <div className="mt-2 space-y-1">
+                  {batchResult.results
+                    .filter((r) => !r.success)
+                    .map((r, i) => (
+                      <div key={i} className="text-xs text-red-400">
+                        {r.invoiceNumber}: {r.message}
+                      </div>
+                    ))}
+                </div>
+              )}
+              {!batchResult.dryRun && batchResult.failed === 0 && (
+                <p className="mt-2 text-xs text-silver-400">
+                  Bank transfers created (clearing &rarr; savings).
+                </p>
+              )}
             </div>
           )}
-          {!batchResult.dryRun && batchResult.failed === 0 && (
-            <p className="mt-2 text-xs text-silver-400">
-              Bank transfers created (clearing &rarr; savings). Savings deposits now have matching transfers.
-            </p>
-          )}
-        </div>
-      )}
 
-      {/* Actionable batch groups (unreconciled deposits only) */}
-      {actionableBatches.length > 0 && (
-        <div className="space-y-4 mb-6">
-          <h3 className="text-sm font-semibold text-white">Ready to Reconcile ({actionableBatches.length} batches)</h3>
-          {batchMatches.map((batch, idx) => {
-            if (batch.deposit.isReconciled) return null
-            return (
-            <div key={batch.deposit.bankTransactionId} className="card border border-silver-700/30">
-              <div className="flex items-start gap-3 mb-3">
-                <input
-                  type="checkbox"
-                  checked={selectedIndices.has(idx)}
-                  onChange={() => onToggleBatch(idx)}
-                  className="rounded mt-1"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-white font-semibold">
-                        Savings Deposit: ${batch.deposit.amount.toFixed(2)}
-                      </span>
-                      <span className="text-silver-400 text-xs ml-2">
-                        {batch.deposit.date}
-                        {batch.deposit.reference && <> &mdash; ref: {batch.deposit.reference}</>}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {batch.isExactMatch ? (
-                        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-green-900/40 text-green-300 border border-green-500/30">
-                          Exact
+          {/* Individual matched groups */}
+          <div className="space-y-4 mb-6">
+            <h3 className="text-sm font-semibold text-white">Matched Deposits ({matches.length})</h3>
+            {matches.map((match, idx) => (
+              <div key={idx} className="card border border-silver-700/30">
+                <div className="flex items-start gap-3 mb-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIndices.has(idx)}
+                    onChange={() => onToggleSelect(idx)}
+                    className="rounded mt-1"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-white font-semibold">
+                          Deposit: ${match.depositAmount.toFixed(2)}
                         </span>
-                      ) : (
-                        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-amber-900/40 text-amber-300 border border-amber-500/30">
-                          Diff: ${batch.difference.toFixed(2)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {match.isExact ? (
+                          <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-green-900/40 text-green-300 border border-green-500/30">
+                            Exact
+                          </span>
+                        ) : (
+                          <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-amber-900/40 text-amber-300 border border-amber-500/30">
+                            Diff: ${match.difference.toFixed(2)}
+                          </span>
+                        )}
+                        <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-cyan-900/40 text-cyan-300 border border-cyan-500/30">
+                          {match.entries.length} patient{match.entries.length !== 1 ? 's' : ''}
                         </span>
-                      )}
-                      <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-cyan-900/40 text-cyan-300 border border-cyan-500/30">
-                        {batch.clearingEntries.length} patient{batch.clearingEntries.length !== 1 ? 's' : ''}
-                      </span>
+                        <button
+                          onClick={() => onRemoveMatch(idx)}
+                          className="text-red-400 hover:text-red-300 text-xs px-1"
+                          title="Remove this match"
+                        >
+                          &#10005;
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-xs text-silver-400 mt-1">
-                    Clearing entries sum: ${batch.total.toFixed(2)}
+                    <div className="text-xs text-silver-400 mt-1">
+                      Patient payments sum: ${match.total.toFixed(2)}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Individual clearing entries within the batch */}
-              <div className="ml-8 space-y-0.5 max-h-48 overflow-y-auto">
-                {batch.clearingEntries.map((c) => (
-                  <div
-                    key={c.transactionId}
-                    className="text-xs font-mono text-silver-300 flex items-center gap-1.5 flex-wrap"
-                  >
-                    <span className="text-white">${c.amount.toFixed(2)}</span>
-                    <span className="text-silver-600">&mdash;</span>
-                    <span className="text-blue-400">{c.reference || c.invoiceNumber || '(no ref)'}</span>
-                    <span className="text-silver-600">&mdash;</span>
-                    <span className="text-purple-400 font-sans">{c.contactName || '(unknown)'}</span>
-                    <span className="text-silver-600">&mdash;</span>
-                    <span>{c.date}</span>
-                  </div>
-                ))}
+                {/* Individual patient entries */}
+                <div className="ml-8 space-y-0.5 max-h-48 overflow-y-auto">
+                  {match.entries.map((c) => (
+                    <div
+                      key={c.transactionId}
+                      className="text-xs font-mono text-silver-300 flex items-center gap-1.5 flex-wrap"
+                    >
+                      <span className="text-white">${c.amount.toFixed(2)}</span>
+                      <span className="text-silver-600">&mdash;</span>
+                      <span className="text-blue-400">{c.reference || c.invoiceNumber || '(no ref)'}</span>
+                      <span className="text-silver-600">&mdash;</span>
+                      <span className="text-purple-400 font-sans">{c.contactName || '(unknown)'}</span>
+                      <span className="text-silver-600">&mdash;</span>
+                      <span>{c.date}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Available (unmatched) clearing entries */}
+      <div className="card mb-6 border-silver-700/20">
+        <h3 className="text-sm font-semibold text-silver-300 mb-2">
+          {matches.length > 0 ? `Remaining Patient Payments (${availableEntries.length})` : `All Patient Payments (${entries.length})`}
+        </h3>
+        <p className="text-xs text-silver-500 mb-2">
+          {matches.length > 0
+            ? 'These payments haven\u2019t been matched to a deposit yet.'
+            : 'Enter a Medicare deposit amount above to find which patients are included.'}
+        </p>
+        <div className="space-y-0.5 max-h-64 overflow-y-auto">
+          {(matches.length > 0 ? availableEntries : entries).map((c) => (
+            <div key={c.transactionId} className="text-xs font-mono text-silver-300 flex items-center gap-1.5 flex-wrap">
+              <span className="text-white">${c.amount.toFixed(2)}</span>
+              <span className="text-silver-600">&mdash;</span>
+              <span className="text-blue-400">{c.reference || c.invoiceNumber || '(no ref)'}</span>
+              <span className="text-silver-600">&mdash;</span>
+              <span className="text-purple-400 font-sans">{c.contactName || '(unknown)'}</span>
+              <span className="text-silver-600">&mdash;</span>
+              <span>{c.date}</span>
             </div>
-          )
-          })}
+          ))}
         </div>
-      )}
-
-      {/* Unmatched savings deposits */}
-      {unmatchedDeposits.length > 0 && (
-        <div className="card mb-6 border-yellow-500/30 bg-yellow-900/10">
-          <h3 className="text-sm font-semibold text-yellow-300 mb-2">
-            Unmatched Savings Deposits ({unmatchedDeposits.length})
-          </h3>
-          <p className="text-xs text-silver-400 mb-2">
-            No combination of clearing entries sums to these deposits. May need a wider date range or manual review.
-          </p>
-          <div className="space-y-1">
-            {unmatchedDeposits.map((dep) => (
-              <div key={dep.bankTransactionId} className="text-xs font-mono text-silver-300">
-                ${dep.amount.toFixed(2)} &mdash; {dep.date} &mdash; ref: {dep.reference || '(none)'}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Unmatched clearing entries */}
-      {unmatchedClearing.length > 0 && (
-        <div className="card mb-6 border-amber-500/30 bg-amber-900/10">
-          <h3 className="text-sm font-semibold text-amber-300 mb-2">
-            Unmatched Clearing Entries ({unmatchedClearing.length})
-          </h3>
-          <p className="text-xs text-silver-400 mb-2">
-            These patient payments aren&apos;t part of any matched batch. The deposit may not be in the savings account yet, or may fall outside the date range.
-          </p>
-          <div className="space-y-1">
-            {unmatchedClearing.map((c) => (
-              <div key={c.transactionId} className="text-xs font-mono text-silver-300">
-                ${c.amount.toFixed(2)} &mdash; {c.reference || c.invoiceNumber || '(no ref)'} &mdash; {c.contactName || '(unknown)'} &mdash; {c.date}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      </div>
     </>
   )
 }

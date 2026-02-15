@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/xero/auth'
 import {
   getUnreconciledBankTransactions,
-  getAllBankDeposits,
   getClearingTransactions,
   getAccountPayments,
   suggestGroupings,
   reconcileThreeWay,
-  reconcileMedicare,
 } from '@/lib/xero/client'
 import type {
   ClearingSummaryResponse,
@@ -269,31 +267,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(resp)
     }
 
-    // ── Medicare mode: savings account batch reconciliation ──
-    // Subset-sum matches clearing RECEIVE entries against savings deposits.
-    // No Halaxy needed — works purely from Xero clearing + savings data.
+    // ── Medicare mode: fetch clearing payments for manual deposit matching ──
+    // Returns all patient payments from Halaxy via Xero Payments API.
+    // The UI does client-side subset-sum matching against user-entered deposit amounts
+    // because Medicare deposits are bank feed statement lines that can't be fetched via API.
     if (modeParam === 'medicare') {
-      const savingsAccountId = process.env.XERO_SAVINGS_ACCOUNT_ID
-      if (!savingsAccountId) {
-        return NextResponse.json(
-          { error: 'XERO_SAVINGS_ACCOUNT_ID env var is required for Medicare mode' },
-          { status: 500 }
-        )
-      }
+      const clearingPayments = await getAccountPayments(clearingAccountId, fromDate, toDate)
 
-      const toleranceCents = Number(searchParams.get('tolerance') ?? 200)
+      // Filter to positive amounts only, exclude transfers
+      const patientPayments = clearingPayments.filter((t) => {
+        const type = (t.txnType ?? '').toUpperCase()
+        if (type.includes('TRANSFER')) return false
+        return t.amount > 0
+      })
 
-      // Fetch ALL savings deposits (including reconciled) so we can show the full picture.
-      // For clearing: fetch PAYMENTS (invoice payments from Halaxy) — these are different
-      // from BankTransactions. Halaxy creates Payments against invoices, not standalone txns.
-      const [savingsDeposits, clearingPayments] = await Promise.all([
-        getAllBankDeposits(savingsAccountId, fromDate, toDate),
-        getAccountPayments(clearingAccountId, fromDate, toDate),
-      ])
-
-      const result = reconcileMedicare(clearingPayments, savingsDeposits, toleranceCents)
-
-      return NextResponse.json(result)
+      return NextResponse.json({
+        clearingEntries: patientPayments,
+        totalAmount: Math.round(patientPayments.reduce((s, t) => s + t.amount, 0) * 100) / 100,
+        entryCount: patientPayments.length,
+        fromDate,
+        toDate,
+      })
     }
 
     // ── Three-way matching mode ──
